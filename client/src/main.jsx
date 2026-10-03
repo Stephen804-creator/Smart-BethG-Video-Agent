@@ -41,6 +41,8 @@ function App() {
   const [filmReview, setFilmReview] = useState(null);
   const [assetUploadShotId, setAssetUploadShotId] = useState('');
   const [uploadingAsset, setUploadingAsset] = useState(false);
+  const [storyDraft, setStoryDraft] = useState({ premise: '', theme: '', tone: '', setting: '', rules: '', locations: '', factions: '', terminology: '' });
+  const [characterDraft, setCharacterDraft] = useState({ name: '', role: '', appearance: '', personality: '', description: '' });
 
   async function loadSequences() {
     try {
@@ -177,7 +179,56 @@ function App() {
     if (!id) return;
     const r = await fetch(API + '/film/projects/' + id);
     const data = await r.json();
-    if (r.ok) { setFilmProject(data.project); setFilmProjectId(id); }
+    if (r.ok) { setFilmProject(data.project); setFilmProjectId(id); syncStoryDraft(data.project); }
+  }
+
+  function syncStoryDraft(project) {
+    const story = project?.story || {};
+    const world = project?.world || {};
+    setStoryDraft({
+      premise: project?.premise || story.premise || '',
+      theme: story.theme || '',
+      tone: story.tone || '',
+      setting: world.setting || '',
+      rules: Array.isArray(world.rules) ? world.rules.join('\n') : '',
+      locations: Array.isArray(world.locations) ? world.locations.join('\n') : '',
+      factions: Array.isArray(world.factions) ? world.factions.join('\n') : '',
+      terminology: Array.isArray(world.terminology) ? world.terminology.join('\n') : ''
+    });
+  }
+
+  async function saveStoryWorld() {
+    if (!filmProjectId) return;
+    try {
+      const story = { premise: storyDraft.premise, theme: storyDraft.theme, tone: storyDraft.tone };
+      const world = {
+        setting: storyDraft.setting,
+        rules: storyDraft.rules.split('\n').map(x => x.trim()).filter(Boolean),
+        locations: storyDraft.locations.split('\n').map(x => x.trim()).filter(Boolean),
+        factions: storyDraft.factions.split('\n').map(x => x.trim()).filter(Boolean),
+        terminology: storyDraft.terminology.split('\n').map(x => x.trim()).filter(Boolean)
+      };
+      let r = await fetch(API + '/film/projects/' + filmProjectId + '/story', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(story) });
+      if (!r.ok) throw new Error('Could not save story.');
+      r = await fetch(API + '/film/projects/' + filmProjectId + '/world', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(world) });
+      if (!r.ok) throw new Error('Could not save world.');
+      const fresh = await fetch(API + '/film/projects/' + filmProjectId);
+      const data = await fresh.json();
+      setFilmProject(data.project);
+      setStatus('Story and world saved');
+    } catch (e) { setStatus(e.message || 'Could not save story/world'); }
+  }
+
+  async function addCharacter() {
+    if (!filmProjectId || !characterDraft.name.trim()) return;
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/characters', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(characterDraft)
+    });
+    const data = await r.json();
+    if (!r.ok) { setStatus(data.error || 'Could not add character'); return; }
+    setFilmProject(data.project);
+    setCharacterDraft({ name:'', role:'', appearance:'', personality:'', description:'' });
+    setStatus('Character added to story bible');
   }
 
   async function addFilmScene() {
@@ -375,12 +426,50 @@ function App() {
       {!filmProject ? <div className="workspace-empty"><strong>Start a real production project</strong><span>Create a project to get scenes, a shot list, take logging and continuity tracking.</span></div> :
       <div className="workspace-body">
         <div className="workspace-tabs">
+          <button className={filmTab === 'story' ? 'active' : ''} onClick={() => { setFilmTab('story'); syncStoryDraft(filmProject); }}>Story & World</button>
           <button className={filmTab === 'shots' ? 'active' : ''} onClick={() => setFilmTab('shots')}>Shot List</button>
           <button className={filmTab === 'takes' ? 'active' : ''} onClick={() => setFilmTab('takes')}>Camera / Takes</button>
           <button className={filmTab === 'continuity' ? 'active' : ''} onClick={() => setFilmTab('continuity')}>Continuity</button>
           <button className={filmTab === 'assets' ? 'active' : ''} onClick={() => setFilmTab('assets')}>Media Assets</button>
           <button className={filmTab === 'assistant' ? 'active' : ''} onClick={() => setFilmTab('assistant')}>AI Help</button>
         </div>
+
+        {filmTab === 'story' && <div className="story-workspace">
+          <div className="story-column">
+            <div className="subhead"><strong>Story Bible</strong><span className="hint">Persistent creative rules for this project.</span></div>
+            <label>Premise<textarea rows="4" value={storyDraft.premise} onChange={e => setStoryDraft({...storyDraft,premise:e.target.value})} placeholder="What is the core story?"/></label>
+            <div className="grid3">
+              <label>Theme<input value={storyDraft.theme} onChange={e => setStoryDraft({...storyDraft,theme:e.target.value})} placeholder="e.g. trust has a cost"/></label>
+              <label>Tone<input value={storyDraft.tone} onChange={e => setStoryDraft({...storyDraft,tone:e.target.value})} placeholder="e.g. dark, tense"/></label>
+              <label>Setting<input value={storyDraft.setting} onChange={e => setStoryDraft({...storyDraft,setting:e.target.value})} placeholder="Where/when?"/></label>
+            </div>
+            <div className="subhead character-head"><strong>Character Bible</strong><span className="hint">{filmProject?.characters?.length || 0} characters</span></div>
+            <div className="character-form">
+              <div className="grid3">
+                <label>Name<input value={characterDraft.name} onChange={e => setCharacterDraft({...characterDraft,name:e.target.value})}/></label>
+                <label>Role<input value={characterDraft.role} onChange={e => setCharacterDraft({...characterDraft,role:e.target.value})}/></label>
+                <label>Appearance<input value={characterDraft.appearance} onChange={e => setCharacterDraft({...characterDraft,appearance:e.target.value})}/></label>
+              </div>
+              <div className="grid3">
+                <label>Personality<input value={characterDraft.personality} onChange={e => setCharacterDraft({...characterDraft,personality:e.target.value})}/></label>
+                <label className="wide-field">Description<input value={characterDraft.description} onChange={e => setCharacterDraft({...characterDraft,description:e.target.value})}/></label>
+              </div>
+              <button onClick={addCharacter} disabled={!characterDraft.name.trim()}>Add character</button>
+            </div>
+            <div className="character-list">
+              {(filmProject?.characters || []).map(character => <div className="character-card" key={character.id}><b>{character.name}</b><span>{character.role || 'Role not defined'}</span><small>{character.appearance || 'Appearance not defined.'} {character.personality ? '· ' + character.personality : ''}</small></div>)}
+              {!filmProject?.characters?.length && <span className="hint">Add the first character to establish persistent visual and narrative identity.</span>}
+            </div>
+          </div>
+          <div className="story-column">
+            <div className="subhead"><strong>World Bible</strong><span className="hint">One item per line.</span></div>
+            <label>World rules<textarea rows="6" value={storyDraft.rules} onChange={e => setStoryDraft({...storyDraft,rules:e.target.value})} placeholder="One rule per line. Example: The system cannot reverse time."/></label>
+            <label>Important locations<textarea rows="5" value={storyDraft.locations} onChange={e => setStoryDraft({...storyDraft,locations:e.target.value})} placeholder="One location per line."/></label>
+            <label>Factions / groups<textarea rows="4" value={storyDraft.factions} onChange={e => setStoryDraft({...storyDraft,factions:e.target.value})} placeholder="One faction per line."/></label>
+            <label>Terminology<textarea rows="4" value={storyDraft.terminology} onChange={e => setStoryDraft({...storyDraft,terminology:e.target.value})} placeholder="Important names, systems, technologies, magic terms…"/></label>
+            <button onClick={saveStoryWorld}>Save story & world</button>
+          </div>
+        </div>}
 
         {filmTab === 'shots' && <div className="workspace-grid">
           <div>
