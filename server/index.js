@@ -685,44 +685,66 @@ app.post('/api/generate', generationRateLimit, async (req, res) => {
   if (!prompt?.trim()) return res.status(400).json({ error: 'A scene description is required.' });
 
   try {
-    let selectedProvider = provider;
-    if (!selectedProvider || selectedProvider === 'auto') {
-      const settings = readSettings();
-      const available = listProviders(settings);
-      const comfy = await getComfyHealth(settings.comfyUrl);
-      const enriched = available.map(item => item.id === 'comfyui' ? { ...item, configured: comfy.ok, health: comfy } : item);
-      const decision = chooseProvider(enriched, { task: 'text-to-video', allowPaid: false, preferFree: true });
-      if (!decision.selected) return res.status(503).json({ error: 'No configured free/local video provider is available.' });
-      selectedProvider = decision.selected.id;
-    }
+    const job = generationQueue.enqueue('video-generation', async () => {
+      let selectedProvider = provider;
+      if (!selectedProvider || selectedProvider === 'auto') {
+        const settings = readSettings();
+        const available = listProviders(settings);
+        const comfy = await getComfyHealth(settings.comfyUrl);
+        const enriched = available.map(item => item.id === 'comfyui' ? { ...item, configured: comfy.ok, health: comfy } : item);
+        const decision = chooseProvider(enriched, { task: 'text-to-video', allowPaid: false, preferFree: true });
+        if (!decision.selected) throw new Error('No configured free/local video provider is available.');
+        selectedProvider = decision.selected.id;
+      }
 
-    if (selectedProvider === 'huggingface-ltx') {
-      const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
-      const safeRatio = ['16:9', '9:16', '1:1'].includes(ratio) ? ratio : '16:9';
-      return res.json(await generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId }));
-    }
+      if (selectedProvider === 'huggingface-ltx') {
+        const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
+        const safeRatio = ['16:9', '9:16', '1:1'].includes(ratio) ? ratio : '16:9';
+        return generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId });
+      }
 
-    if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
-      const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
-      const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
-      return res.json(await generateLumaShot({ prompt: prompt.trim(), ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model }));
-    }
+      if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
+        const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
+        const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
+        return generateLumaShot({ prompt: prompt.trim(), ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model });
+      }
 
-    if (selectedProvider === 'comfyui') {
-      const task = normalizeMediaTask({ operation: 'text-to-video', prompt: prompt.trim(), duration, aspectRatio: ratio, requirements: { duration, aspectRatio: ratio, quality: 'standard' }, metadata: { framing, cameraMovement, lighting } });
-      validateMediaTask(task);
-      const settings = readSettings();
-      const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
-      const generated = await worker.execute(task);
-      const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: 'video', operation: task.operation, provider: 'comfyui', workerId: worker.id, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source };
-      appendGeneration(record);
-      return res.json({ provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record });
-    }
+      if (selectedProvider === 'comfyui') {
+        const task = normalizeMediaTask({
+          operation: 'text-to-video',
+          prompt: prompt.trim(),
+          duration,
+          aspectRatio: ratio,
+          requirements: { duration, aspectRatio: ratio, quality: 'standard' },
+          metadata: { framing, cameraMovement, lighting }
+        });
+        validateMediaTask(task);
+        const settings = readSettings();
+        const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
+        const generated = await worker.execute(task);
+        const record = {
+          id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          createdAt: new Date().toISOString(),
+          domain: 'video',
+          operation: task.operation,
+          provider: 'comfyui',
+          workerId: worker.id,
+          prompt: task.prompt,
+          requirements: task.requirements,
+          output: generated.output,
+          promptId: generated.promptId,
+          source: generated.source
+        };
+        appendGeneration(record);
+        return { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record };
+      }
 
-    return res.status(400).json({ error: 'Unknown provider.' });
+      throw new Error('Unknown provider.');
+    });
+    res.status(202).json({ status: 'Queued', job });
   } catch (error) {
-    console.error(error);
-    res.status(502).json({ error: 'Video generation failed.', detail: error?.message || 'Unknown provider error.' });
+    const status = error?.statusCode || 500;
+    res.status(status).json({ error: error?.message || 'Could not queue video generation.' });
   }
 });
 
