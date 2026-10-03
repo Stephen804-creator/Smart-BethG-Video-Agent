@@ -49,7 +49,7 @@ const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
-const allowedOrigins = String(process.env.APP_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean);
+const allowedOrigins = String(process.env.APP_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(x => x.trim()).filter(Boolean);
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '2mb' }));
 app.use('/output', authMiddleware, express.static(outputDir));
