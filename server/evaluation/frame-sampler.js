@@ -53,7 +53,7 @@ export async function sampleVideoFrames(filePath, options = {}) {
   const frames = [];
   for (let i = 0; i < count; i += 1) {
     const timestamp = count === 1 ? duration / 2 : (duration * (i + 0.5)) / count;
-    const safeTime = Math.min(Math.max(timestamp, 0), Math.max(duration / 2, 0));
+    const safeTime = Math.min(Math.max(timestamp, 0), Math.max(duration - 0.05, 0));
     const outputPath = path.join(outputDir, `frame-${String(i + 1).padStart(2, '0')}.jpg`);
     await runCommand('ffmpeg', [
       '-hide_banner', '-loglevel', 'error',
