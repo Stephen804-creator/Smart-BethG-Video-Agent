@@ -134,12 +134,17 @@ function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
   ].join(' ');
 }
 
-async function runLtxJob(client, endpoint, payload) {
+async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000) {
   const job = client.submit(endpoint, payload);
   let finalData = null;
   let lastStatus = null;
+  const deadline = Date.now() + timeoutMs;
 
   for await (const message of job) {
+    if (Date.now() > deadline) {
+      try { await job.return?.(); } catch {}
+      throw new Error(`LTX generation exceeded the ${Math.round(timeoutMs / 60000)} minute worker timeout.`);
+    }
     if (message.type === 'status') lastStatus = message;
     if (message.type === 'data') finalData = message.data;
   }
