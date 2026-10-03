@@ -18,6 +18,7 @@ import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
 import { buildMediaPlan } from './planning/media-planner.js';
 import { buildStoryPlan } from './planning/story-planner.js';
+import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -223,6 +224,12 @@ app.post('/api/projects/:projectId/entity-events', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error?.message || 'Could not save entity event.' });
   }
+});
+
+app.get('/api/media-formats', (req, res) => {
+  const format = req.query.id ? getMediaFormat(String(req.query.id)) : null;
+  if (req.query.id && !format) return res.status(404).json({ error: 'Media format not found.' });
+  res.json(format ? { format } : { formats: listMediaFormats() });
 });
 
 app.post('/api/story/plan', (req, res) => {
