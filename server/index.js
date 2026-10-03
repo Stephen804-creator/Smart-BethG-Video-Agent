@@ -85,37 +85,8 @@ function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
   ].join(' ');
 }
 
-async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId }) {
-  const reference = referenceGenerationId ? findGeneration(generationsFile, referenceGenerationId) : null;
-  const continuityPrompt = reference ? `Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent. Previous shot: ${reference.prompt}` : '';
-  const shotPrompt = buildShotPrompt({ prompt: [continuityPrompt, prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
-  const settings = readSettings();
-  const space = settings.hfSpace || 'Lightricks/ltx-video-distilled';
-  const token = settings.hfToken || process.env.HF_TOKEN || undefined;
-  const dimensions = dimensionsForRatio(ratio);
-
-  const client = await Client.connect(space, {
-    ...(token ? { token } : {}),
-    events: ['status', 'data']
-  });
-
-  const payload = [
-    shotPrompt,
-    'worst quality, inconsistent motion, blurry, jittery, distorted',
-    null,
-    null,
-    dimensions.height,
-    dimensions.width,
-    'text-to-video',
-    Number(duration),
-    9,
-    Math.floor(Math.random() * 2147483647),
-    true,
-    1,
-    true
-  ];
-
-  const job = client.submit('/text_to_video', payload);
+async function runLtxJob(client, endpoint, payload) {
+  const job = client.submit(endpoint, payload);
   let finalData = null;
   let lastStatus = null;
 
@@ -126,6 +97,84 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
 
   if (!finalData) {
     throw new Error(lastStatus?.message || 'LTX completed without returning a video.');
+  }
+
+  return finalData;
+}
+
+async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId }) {
+  const reference = referenceGenerationId ? findGeneration(generationsFile, referenceGenerationId) : null;
+  const hasVisualReference = Boolean(reference?.output);
+
+  const continuityPrompt = reference
+    ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.'
+    : '';
+
+  const shotPrompt = buildShotPrompt({
+    prompt: [continuityPrompt, prompt].filter(Boolean).join(' '),
+    framing,
+    cameraMovement,
+    lighting
+  });
+
+  const settings = readSettings();
+  const space = settings.hfSpace || 'Lightricks/ltx-video-distilled';
+  const token = settings.hfToken || process.env.HF_TOKEN || undefined;
+  const dimensions = dimensionsForRatio(ratio);
+
+  const client = await Client.connect(space, {
+    ...(token ? { token } : {}),
+    events: ['status', 'data']
+  });
+
+  const seed = Math.floor(Math.random() * 2147483647);
+  let finalData;
+  let mode = 'text-to-video';
+
+  if (hasVisualReference) {
+    const referencePath = path.join(root, reference.output.replace(/^\/output\//, ''));
+    if (!fs.existsSync(referencePath)) {
+      throw new Error('The selected continuity video is no longer available on the server.');
+    }
+
+    mode = 'video-to-video';
+    const inputVideo = await handle_file(referencePath);
+
+    const payload = [
+      shotPrompt,
+      'worst quality, inconsistent motion, blurry, jittery, distorted',
+      null,
+      inputVideo,
+      dimensions.height,
+      dimensions.width,
+      'video-to-video',
+      Number(duration),
+      9,
+      seed,
+      true,
+      1,
+      true
+    ];
+
+    finalData = await runLtxJob(client, '/video_to_video', payload);
+  } else {
+    const payload = [
+      shotPrompt,
+      'worst quality, inconsistent motion, blurry, jittery, distorted',
+      null,
+      null,
+      dimensions.height,
+      dimensions.width,
+      'text-to-video',
+      Number(duration),
+      9,
+      seed,
+      true,
+      1,
+      true
+    ];
+
+    finalData = await runLtxJob(client, '/text_to_video', payload);
   }
 
   const video = getVideoResult(finalData);
@@ -142,7 +191,6 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   const buffer = Buffer.from(await response.arrayBuffer());
   fs.writeFileSync(filepath, buffer);
 
-  const seed = Array.isArray(finalData) && typeof finalData[1] === 'number' ? finalData[1] : null;
   const actualDuration = await probeDuration(filepath);
   const record = {
     id,
@@ -150,9 +198,10 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
     provider: 'huggingface',
     space,
     model: 'LTX Video 0.9.8 13B Distilled',
-    mode: 'text-to-video',
+    mode,
     prompt,
     generatedPrompt: shotPrompt,
+    referenceGenerationId: reference?.id || null,
     framing,
     cameraMovement,
     lighting,
@@ -220,7 +269,15 @@ app.post('/api/generate', async (req, res) => {
       const allowedDurations = [2, 4, 6, 8];
       const safeDuration = allowedDurations.includes(Number(duration)) ? Number(duration) : 2;
       const safeRatio = ['16:9', '9:16', '1:1'].includes(ratio) ? ratio : '16:9';
-      return res.json(await generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId }));
+      return res.json(await generateWithLtx({
+        prompt: prompt.trim(),
+        duration: safeDuration,
+        ratio: safeRatio,
+        framing,
+        cameraMovement,
+        lighting,
+        referenceGenerationId
+      }));
     }
 
     if (provider === 'comfyui') {
