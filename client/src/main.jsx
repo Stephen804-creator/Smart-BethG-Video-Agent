@@ -467,7 +467,7 @@ function App() {
       <div><div className="eyebrow">AI FILMMAKING</div><h1>Cinematic Agent</h1><p>Describe what you want. The engine handles the production path.</p></div>
       <div className="header-actions">
         <button className={provider === 'auto' ? 'provider-chip active' : 'provider-chip'} onClick={() => setProvider(provider === 'auto' ? 'huggingface-ltx' : 'auto')} title="Automatic provider routing"><span>⚙</span><b>{provider === 'auto' ? 'Auto' : (selectedProviderInfo?.name || 'Provider')}</b></button>
-        <button className={showWorkspaceMenu ? 'menu-button active' : 'menu-button'} onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)} title="Open workspace tools"><span>☰</span></button>
+        <button className={showWorkspaceMenu ? 'menu-button active' : 'menu-button'} onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)} title="Open workspace tools"><span>☰</span></button><button className="menu-button" onClick={logout} title="Sign out"><span>↪</span></button>
       </div>
     </header>
 
