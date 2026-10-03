@@ -17,6 +17,7 @@ import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains } from './know
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
 import { buildMediaPlan } from './planning/media-planner.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus } from './database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -204,7 +205,9 @@ app.post('/api/media/generate', async (req, res) => {
     const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
     const result = await worker.execute(task);
     const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, sound: task.sound, output: result.output, promptId: result.promptId, source: result.source };
-    appendDatasetRecord(datasetFile, createDatasetRecord({ task, result, worker, soundPlan: task.sound, knowledgeRefs: task.metadata.knowledgeRefs || [] }));
+    const datasetRecord = createDatasetRecord({ task, result, worker, soundPlan: task.sound, knowledgeRefs: task.metadata.knowledgeRefs || [] });
+    await saveGenerationToDatabase(datasetRecord);
+    appendDatasetRecord(datasetFile, datasetRecord);
     appendGeneration(record);
     res.json({ status: 'Completed', videoUrl: result.output, generation: record });
   } catch (error) {
@@ -238,9 +241,12 @@ app.get('/api/providers', async (req, res) => {
   });
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/database', async (req, res) => { res.json(await getDatabaseStatus()); });
+
+app.get('/api/health', async (req, res) => {
   const s = readSettings();
-  res.json({ ok: true, service: 'cinematic-agent-v1', providers: { huggingfaceLtx: Boolean(s.hfToken || process.env.HF_TOKEN), luma: Boolean(s.lumaApiKey || process.env.LUMAAI_API_KEY), comfyui: Boolean(s.comfyUrl) } });
+  const database = await getDatabaseStatus();
+  res.json({ ok: true, service: 'cinematic-agent-v1', database, providers: { huggingfaceLtx: Boolean(s.hfToken || process.env.HF_TOKEN), luma: Boolean(s.lumaApiKey || process.env.LUMAAI_API_KEY), comfyui: Boolean(s.comfyUrl) } });
 });
 
 app.get('/api/settings', (req, res) => {
@@ -325,4 +331,9 @@ if (fs.existsSync(clientDist)) {
   });
 }
 
-app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
+initDatabase().then(() => {
+  app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
+}).catch(error => {
+  console.error('Database initialization failed:', error?.message || error);
+  app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port} (database unavailable)`));
+});
