@@ -5,7 +5,7 @@ import './styles.css';
 const API = import.meta.env.VITE_API_URL || '/api';
 
 function App() {
-  const [prompt, setPrompt] = useState('A lone warrior walks through a rain-soaked futuristic city at night. Neon reflections shimmer on the street as distant sirens echo. Cinematic, realistic, restrained camera movement.');
+  const [prompt, setPrompt] = useState('');
   const [provider, setProvider] = useState('huggingface-ltx');
   const [duration, setDuration] = useState(2);
   const [ratio, setRatio] = useState('16:9');
@@ -67,7 +67,7 @@ function App() {
     <main>
       <section className="panel composer">
         <div className="section-head"><h2>Generate a shot</h2><span className="status"><i className={generating ? 'busy' : ''}/> {status}</span></div>
-        <label>Scene description<textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows="7"/></label>
+        <label>Scene description<textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows="7" placeholder="Describe the shot you want to generate…"/></label>
         <div className="grid3">
           <label>Provider<select value={provider} onChange={e => setProvider(e.target.value)}><option value="huggingface-ltx">Hugging Face • LTX Video</option><option value="comfyui">ComfyUI (next)</option></select></label>
           <label>Duration<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value="2">2 seconds</option><option value="4">4 seconds</option><option value="6">6 seconds</option><option value="8">8 seconds</option></select></label>
