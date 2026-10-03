@@ -16,6 +16,7 @@ import { normalizeMediaTask, validateMediaTask } from './workers/media-task.js';
 import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains } from './knowledge/base.js';
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
+import { buildMediaPlan } from './planning/media-planner.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -171,6 +172,11 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   appendGeneration(record);
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
+
+app.post('/api/media/plan', (req, res) => {
+  try { res.json(buildMediaPlan(req.body || {})); }
+  catch (error) { res.status(400).json({ error: error?.message || 'Could not build media plan.' }); }
+});
 
 app.get('/api/knowledge', (req, res) => {
   res.json({ domains: listKnowledgeDomains(), results: searchKnowledge(req.query.q || '', req.query.domain || '') });
