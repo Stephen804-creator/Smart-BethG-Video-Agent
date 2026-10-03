@@ -26,6 +26,8 @@ function App() {
   const [genre, setGenre] = useState('action');
   const [formatPlan, setFormatPlan] = useState(null);
   const [planning, setPlanning] = useState(false);
+  const [formatMenuOpen, setFormatMenuOpen] = useState(false);
+  const [showShotControls, setShowShotControls] = useState(false);
   const [filmMode, setFilmMode] = useState(false);
   const [filmIdea, setFilmIdea] = useState('');
   const [filmAssist, setFilmAssist] = useState(null);
@@ -431,28 +433,45 @@ function App() {
       </div>}
     </section>}
 
-    <section className="panel format-panel">
-      <div className="section-head">
-        <div><h2>Choose your production format</h2><span className="hint">Format decides how the story is produced. Genre stays separate.</span></div>
-        <span className="tag">{selectedFormat}</span>
+    <section className="panel format-panel compact-setup">
+      <div className="setup-heading">
+        <div>
+          <div className="eyebrow">PRODUCTION SETUP</div>
+          <h2>What are you making?</h2>
+        </div>
+        <span className="hint">Keep the workspace focused. Detailed choices open only when needed.</span>
       </div>
-      <div className="format-grid">
-        {mediaFormats.map(format => {
-          const icons = { 'audio-story': '🎧', 'picture-story': '🖼️', 'motion-comic': '💥', cinematic: '🎬', anime: '🌸', documentary: '📽️', explainer: '📊' };
-          return <button type="button" key={format.id} className={selectedFormat === format.id ? 'format-card active' : 'format-card'} onClick={() => setSelectedFormat(format.id)}>
-            <span className="format-icon">{icons[format.id] || '🎞️'}</span>
-            <strong>{format.name}</strong>
-            <small>{format.description}</small>
-          </button>;
-        })}
-      </div>
-      <div className="format-controls">
-        <label>Genre
+      <div className="setup-bar">
+        <div className="format-picker">
+          <button type="button" className={formatMenuOpen ? 'format-picker-button open' : 'format-picker-button'} onClick={() => setFormatMenuOpen(!formatMenuOpen)}>
+            <span className="format-picker-icon">{({ 'audio-story':'🎧', 'picture-story':'🖼️', 'motion-comic':'💥', cinematic:'🎬', anime:'🌸', documentary:'📽️', explainer:'📊' })[selectedFormat] || '🎞️'}</span>
+            <span className="format-picker-copy">
+              <b>{mediaFormats.find(f => f.id === selectedFormat)?.name || selectedFormat}</b>
+              <small>Production format</small>
+            </span>
+            <span className="chevron">{formatMenuOpen ? '⌃' : '⌄'}</span>
+          </button>
+          {formatMenuOpen && <div className="format-menu">
+            {mediaFormats.map(format => {
+              const icons = { 'audio-story': '🎧', 'picture-story': '🖼️', 'motion-comic': '💥', cinematic: '🎬', anime: '🌸', documentary: '📽️', explainer: '📊' };
+              return <button type="button" key={format.id} className={selectedFormat === format.id ? 'format-option active' : 'format-option'} onClick={() => { setSelectedFormat(format.id); setFormatMenuOpen(false); }}>
+                <span className="format-option-icon">{icons[format.id] || '🎞️'}</span>
+                <span><b>{format.name}</b><small>{format.description}</small></span>
+                {selectedFormat === format.id && <strong>✓</strong>}
+              </button>;
+            })}
+          </div>}
+        </div>
+        <label className="setup-field">Genre
           <select value={genre} onChange={e => setGenre(e.target.value)}>
             <option>action</option><option>adventure</option><option>comedy</option><option>drama</option><option>fantasy</option><option>horror</option><option>mystery</option><option>romance</option><option>science fiction</option><option>thriller</option><option>historical</option><option>educational</option>
           </select>
         </label>
-        <button onClick={buildFormatPlan} disabled={planning || !prompt.trim()}>{planning ? 'Planning…' : 'Build production plan'} →</button>
+        <button className="setup-plan-button" onClick={buildFormatPlan} disabled={planning || !prompt.trim()}>{planning ? 'Planning…' : 'Build production plan'} <span>→</span></button>
+      </div>
+      <div className="selected-format-note">
+        <span>{mediaFormats.find(f => f.id === selectedFormat)?.description || 'Choose a production format for this project.'}</span>
+        <span className="tag">{selectedFormat}</span>
       </div>
       {formatPlan && <div className="plan-summary">
         <strong>{formatPlan.project.format_name} · {formatPlan.project.genre}</strong>
@@ -476,12 +495,14 @@ function App() {
           <label>Aspect ratio<select value={ratio} onChange={e => setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option><option>4:3</option><option>3:4</option><option>21:9</option></select></label>
         </div>
         {isLuma && <div className="hint provider-note">Luma generation runs independently from the Hugging Face ZeroGPU quota. Luma currently supports Ray 2 and Ray Flash 2 through its API.</div>}
-        <div className="section-head"><h2>Shot controls</h2><span className="hint">These guide the camera without changing your scene.</span></div>
-        <div className="grid3">
+        <button type="button" className={showShotControls ? 'advanced-toggle open' : 'advanced-toggle'} onClick={() => setShowShotControls(!showShotControls)}>
+          <span><b>Camera & look</b><small>Framing, movement and lighting</small></span><span>{showShotControls ? '⌃' : '⌄'}</span>
+        </button>
+        {showShotControls && <div className="advanced-controls">
           <label>Framing<select value={framing} onChange={e => setFraming(e.target.value)}><option>wide shot</option><option>full body</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label>
           <label>Camera movement<select value={cameraMovement} onChange={e => setCameraMovement(e.target.value)}><option>static camera</option><option>slow push-in</option><option>slow pull-back</option><option>slow pan</option><option>slow tracking shot</option></select></label>
           <label>Lighting<select value={lighting} onChange={e => setLighting(e.target.value)}><option>natural cinematic</option><option>soft daylight</option><option>dramatic low light</option><option>night neon</option><option>warm sunset</option></select></label>
-        </div>
+        </div>}
         {referenceGenerationId && <div className="hint">Continuity reference selected. LTX uses the previous video as a visual reference; other providers currently use continuity prompting until their native reference workflow is wired.</div>}
         <button className="generate" disabled={generating} onClick={generate}>{generating ? 'Generating…' : 'Generate cinematic shot'} <span>→</span></button>
       </section>
