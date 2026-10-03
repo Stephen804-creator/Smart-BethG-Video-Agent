@@ -177,7 +177,8 @@ app.get('/api/providers', async (req, res) => {
   const allowPaid = req.query.allowPaid !== 'false';
   const preferFree = req.query.preferFree === 'true';
   const preferLocal = req.query.preferLocal === 'true';
-  const decision = chooseProvider(enriched, { task, allowPaid, preferFree, preferLocal });
+  const providerId = req.query.providerId ? String(req.query.providerId) : '';
+  const decision = chooseProvider(enriched, { task, allowPaid, preferFree, preferLocal, providerId });
   res.json({
     providers: enriched,
     routing: {
