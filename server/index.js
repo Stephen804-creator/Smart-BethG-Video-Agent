@@ -239,6 +239,36 @@ app.post('/api/film/projects/:projectId/continuity', (req, res) => {
   res.status(201).json({ event });
 });
 
+app.post('/api/film/projects/:projectId/assistant', (req, res) => {
+  const project = filmStore.getProject(req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  const shots = project.shots || [];
+  const takes = project.takes || [];
+  const advice = [];
+  const missing = [];
+  if (!project.scenes?.length) advice.push('Create scenes before building the final shot schedule.');
+  if (!shots.length) advice.push('Create the first coverage plan: establish the scene, cover the main action, then capture reaction/detail shots.');
+  const framings = new Set(shots.map(s => String(s.framing || '').toLowerCase()));
+  if (shots.length && ![...framings].some(x => x.includes('wide'))) missing.push('wide/establishing coverage');
+  if (shots.length && ![...framings].some(x => x.includes('close'))) missing.push('close-up or reaction coverage');
+  const withoutLens = shots.filter(s => !s.lens).length;
+  const withoutAudio = shots.filter(s => !s.audio).length;
+  const withoutTake = shots.filter(s => !(takes.some(t => t.shotId === s.id))).length;
+  if (withoutLens) advice.push(withoutLens + ' shot(s) have no lens recorded. Record the intended focal length before shooting.');
+  if (withoutAudio) advice.push(withoutAudio + ' shot(s) have no production-audio note. Decide whether the take needs sync sound, wild track or silence.');
+  if (withoutTake) advice.push(withoutTake + ' planned shot(s) have no logged take yet.');
+  if (missing.length) advice.push('Coverage to consider next: ' + missing.join(', ') + '.');
+  if (!advice.length) advice.push('The current shot and take log has no obvious planning gaps. Review continuity and select the best takes before moving to edit.');
+  res.json({
+    mode: 'production-review',
+    project_id: project.id,
+    summary: { scenes: project.scenes?.length || 0, shots: shots.length, takes: takes.length, assets: project.assets?.length || 0 },
+    recommendations: advice,
+    coverage_gaps: missing,
+    next_action: advice[0]
+  });
+});
+
 app.get('/api/projects/:projectId/entities', async (req, res) => {
   try {
     const entities = await getEntityState(req.params.projectId, req.query.entityId || null);
