@@ -9,3 +9,21 @@ services:
     envVars:
       - key: HF_TOKEN
         sync: false
+      - key: APP_AUTH_PASSWORD
+        sync: false
+      - key: APP_SESSION_SECRET
+        sync: false
+      - key: APP_ALLOWED_ORIGINS
+        sync: false
+      - key: LUMAAI_API_KEY
+        sync: false
+      - key: LUMA_MODEL
+        value: ray-flash-2
+      - key: COMFYUI_URL
+        sync: false
+      - key: COMFYUI_WORKFLOW_PATH
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: "true"
