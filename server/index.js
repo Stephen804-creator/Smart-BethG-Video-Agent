@@ -650,19 +650,30 @@ app.post('/api/generate', async (req, res) => {
   if (!prompt?.trim()) return res.status(400).json({ error: 'A scene description is required.' });
 
   try {
-    if (provider === 'huggingface-ltx') {
+    let selectedProvider = provider;
+    if (!selectedProvider || selectedProvider === 'auto') {
+      const settings = readSettings();
+      const available = listProviders(settings);
+      const comfy = await getComfyHealth(settings.comfyUrl);
+      const enriched = available.map(item => item.id === 'comfyui' ? { ...item, configured: comfy.ok, health: comfy } : item);
+      const decision = chooseProvider(enriched, { task: 'text-to-video', allowPaid: false, preferFree: true });
+      if (!decision.selected) return res.status(503).json({ error: 'No configured free/local video provider is available.' });
+      selectedProvider = decision.selected.id;
+    }
+
+    if (selectedProvider === 'huggingface-ltx') {
       const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
       const safeRatio = ['16:9', '9:16', '1:1'].includes(ratio) ? ratio : '16:9';
       return res.json(await generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId }));
     }
 
-    if (provider === 'luma-ray-flash' || provider === 'luma-ray-2') {
+    if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
       const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
-      const model = provider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
+      const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
       return res.json(await generateLumaShot({ prompt: prompt.trim(), ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model }));
     }
 
-    if (provider === 'comfyui') {
+    if (selectedProvider === 'comfyui') {
       const task = normalizeMediaTask({ operation: 'text-to-video', prompt: prompt.trim(), duration, aspectRatio: ratio, requirements: { duration, aspectRatio: ratio, quality: 'standard' }, metadata: { framing, cameraMovement, lighting } });
       validateMediaTask(task);
       const settings = readSettings();
