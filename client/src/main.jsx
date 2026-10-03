@@ -18,10 +18,53 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [referenceGenerationId, setReferenceGenerationId] = useState(null);
+  const [sequences, setSequences] = useState([]);
+  const [sequenceId, setSequenceId] = useState('');
+  const [newSequenceTitle, setNewSequenceTitle] = useState('');
+
+  async function loadSequences() {
+    try {
+      const r = await fetch(API + '/sequences');
+      const data = await r.json();
+      setSequences(data.sequences || []);
+      if (!sequenceId && data.sequences?.[0]) setSequenceId(data.sequences[0].id);
+    } catch {}
+  }
 
   useEffect(() => {
     fetch(API + '/settings').then(r => r.json()).then(setSettings).catch(() => {});
+    loadSequences();
   }, []);
+
+  async function createSequence() {
+    const r = await fetch(API + '/sequences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newSequenceTitle || 'Untitled Sequence' })
+    });
+    const data = await r.json();
+    if (data.sequence) {
+      setSequences(prev => [data.sequence, ...prev]);
+      setSequenceId(data.sequence.id);
+      setNewSequenceTitle('');
+      setStatus('New sequence created');
+    }
+  }
+
+  async function addResultToSequence() {
+    const generationId = result?.generation?.id;
+    if (!generationId || !sequenceId) return;
+    const r = await fetch(API + '/sequences/' + sequenceId + '/shots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generationId })
+    });
+    const data = await r.json();
+    if (data.sequence) {
+      setSequences(prev => prev.map(item => item.id === data.sequence.id ? data.sequence : item));
+      setStatus('Shot added to sequence');
+    }
+  }
 
   async function generate() {
     if (!prompt.trim() || generating) return;
@@ -55,6 +98,8 @@ function App() {
     setStatus('Settings saved');
   }
 
+  const activeSequence = sequences.find(item => item.id === sequenceId);
+
   return <div className="app">
     <header>
       <div><div className="eyebrow">AI FILMMAKING</div><h1>Cinematic Agent</h1><p>Small first. Real generation. Expand later.</p></div>
@@ -67,6 +112,24 @@ function App() {
       <label>Hugging Face token (optional)<input type="password" value={settings.hfToken} onChange={e => setSettings({ ...settings, hfToken: e.target.value })} placeholder={settings.hasHFToken ? 'Token already saved' : 'hf_…'}/></label>
       <div className="row"><button onClick={saveSettings}>Save</button><span className="hint">A token is optional for a public Space, but can give your requests authenticated quota.</span></div>
     </section>}
+
+    <section className="panel sequence-panel">
+      <div className="section-head">
+        <div><h2>Film sequence</h2><span className="hint">Build the movie as ordered shots instead of isolated generations.</span></div>
+        <span className="tag">{activeSequence ? `${activeSequence.shots.length} shots` : 'No sequence'}</span>
+      </div>
+      <div className="row sequence-row">
+        <select value={sequenceId} onChange={e => setSequenceId(e.target.value)}>
+          {!sequences.length && <option value="">Create a sequence first</option>}
+          {sequences.map(item => <option key={item.id} value={item.id}>{item.title} · {item.shots.length} shots</option>)}
+        </select>
+        <input value={newSequenceTitle} onChange={e => setNewSequenceTitle(e.target.value)} placeholder="New sequence title"/>
+        <button onClick={createSequence}>New sequence</button>
+      </div>
+      {activeSequence && <div className="sequence-track">
+        {activeSequence.shots.length ? activeSequence.shots.map((shot, index) => <span key={shot}>Shot {index + 1}</span>) : <span className="hint">No shots yet. Generate the first shot below.</span>}
+      </div>}
+    </section>
 
     <main>
       <section className="panel composer">
@@ -91,12 +154,16 @@ function App() {
         <div className="section-head"><h2>Result</h2>{result && <span className="tag">{result.provider}</span>}</div>
         {!result ? <div className="empty"><div className="play">▶</div><strong>Your generated shot will appear here</strong><span>First real engine: LTX Video through Hugging Face.</span></div> : <div className="result">
           <div className="resultbox">{result.videoUrl ? <video src={result.videoUrl} controls playsInline/> : <div><strong>{result.message || 'No video returned'}</strong><small>{result.detail || ''}</small></div>}</div>
-          {result.generation && <div className="meta"><span>{result.generation.model}</span><span>{result.generation.duration}s</span><span>{result.generation.width}×{result.generation.height}</span></div>}
-          <div className="actions">{result.videoUrl && <a href={result.videoUrl} download className="button">Download</a>}<button onClick={() => { if (result?.generation?.id) { setReferenceGenerationId(result.generation.id); setPrompt(prompt + ' Continue the same scene while preserving the character, clothing, location and visual identity. Change only what this new shot description requests.'); setStatus('Visual continuity reference selected'); } }}>Use as next shot</button></div>
+          {result.generation && <div className="meta"><span>{result.generation.model}</span><span>{result.generation.mode}</span><span>{result.generation.duration}s</span><span>{result.generation.width}×{result.generation.height}</span></div>}
+          <div className="actions">
+            {result.videoUrl && <a href={result.videoUrl} download className="button">Download</a>}
+            <button disabled={!sequenceId} onClick={addResultToSequence}>Add to sequence</button>
+            <button onClick={() => { if (result?.generation?.id) { setReferenceGenerationId(result.generation.id); setPrompt(prompt + ' Continue the same scene while preserving the character, clothing, location and visual identity. Change only what this new shot description requests.'); setStatus('Visual continuity reference selected'); } }}>Use as next shot</button>
+          </div>
         </div>}
       </section>
     </main>
-    <footer>V1 • Hugging Face LTX adapter • Generation metadata saved • No database yet</footer>
+    <footer>V1 • Hugging Face LTX adapter • Visual continuity • Persistent shot sequences</footer>
   </div>;
 }
 
