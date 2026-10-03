@@ -18,7 +18,7 @@ import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
 import { buildMediaPlan } from './planning/media-planner.js';
 import { buildStoryPlan } from './planning/story-planner.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent } from './database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -174,6 +174,32 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   appendGeneration(record);
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
+
+app.post('/api/projects/:projectId/entities', async (req, res) => {
+  try {
+    const entities = Array.isArray(req.body?.entities) ? req.body.entities : [];
+    await upsertWorldEntities(req.params.projectId, entities);
+    res.json({ ok: true, count: entities.length });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Could not save world entities.' });
+  }
+});
+
+app.post('/api/projects/:projectId/entity-events', async (req, res) => {
+  try {
+    await recordEntityEvent({
+      projectId: req.params.projectId,
+      sceneId: req.body?.sceneId,
+      shotId: req.body?.shotId,
+      entityId: req.body?.entityId,
+      eventType: req.body?.eventType,
+      changes: req.body?.changes || {}
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Could not save entity event.' });
+  }
+});
 
 app.post('/api/story/plan', (req, res) => {
   try { res.json(buildStoryPlan(req.body || {})); }
