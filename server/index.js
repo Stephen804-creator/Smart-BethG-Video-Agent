@@ -28,7 +28,7 @@ import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
-import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, setSessionCookie } from './security.js';
+import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -70,7 +70,7 @@ app.post('/api/auth/login', authRateLimit, (req, res) => {
   if (!process.env.APP_AUTH_PASSWORD) return res.status(503).json({ error: 'Authentication is not configured.' });
   const supplied = String(req.body?.password || '');
   const expected = String(process.env.APP_AUTH_PASSWORD);
-  if (supplied !== expected) return res.status(401).json({ error: 'Invalid password.' });
+  if (!secretsMatch(supplied, expected)) return res.status(401).json({ error: 'Invalid password.' });
   setSessionCookie(res);
   res.json({ authenticated: true });
 });
