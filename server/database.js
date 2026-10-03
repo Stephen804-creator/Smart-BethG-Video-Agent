@@ -189,3 +189,49 @@ export async function recordEntityEvent(event = {}) {
   );
   return true;
 }
+
+export async function getEntityState(projectId, entityId = null) {
+  const db = getPool();
+  if (!db || !projectId) return null;
+  const query = entityId
+    ? ['SELECT * FROM media_entities WHERE project_id=$1 AND id=$2', [projectId, entityId]]
+    : ['SELECT * FROM media_entities WHERE project_id=$1 ORDER BY entity_type, name', [projectId]];
+  const result = await db.query(query[0], query[1]);
+  return entityId ? (result.rows[0] || null) : result.rows;
+}
+
+export async function resolveEntityStateAt(projectId, entityId, sceneId = null, shotId = null) {
+  const db = getPool();
+  if (!db || !projectId || !entityId) return null;
+
+  const entity = await db.query(
+    'SELECT * FROM media_entities WHERE project_id=$1 AND id=$2',
+    [projectId, entityId]
+  );
+  if (!entity.rows[0]) return null;
+
+  const events = await db.query(
+    `SELECT scene_id, shot_id, event_type, changes, created_at
+     FROM media_entity_events
+     WHERE project_id=$1 AND entity_id=$2
+     ORDER BY created_at ASC`,
+    [projectId, entityId]
+  );
+
+  const state = { ...(entity.rows[0].state || {}) };
+  const history = [];
+
+  for (const event of events.rows) {
+    if (sceneId && event.scene_id && String(event.scene_id) > String(sceneId)) break;
+    if (shotId && event.scene_id === sceneId && event.shot_id && String(event.shot_id) > String(shotId)) break;
+    Object.assign(state, event.changes || {});
+    history.push(event);
+  }
+
+  return {
+    entity: entity.rows[0],
+    state,
+    history,
+    resolved_at: { scene_id: sceneId, shot_id: shotId }
+  };
+}
