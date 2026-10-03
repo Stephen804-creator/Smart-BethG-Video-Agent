@@ -30,4 +30,6 @@ test('samples representative frames with evidence metadata', async () => {
   assert.ok(result.frames.every(frame => frame.sizeBytes > 0));
   assert.ok(result.frames.every(frame => /^[a-f0-9]{64}$/.test(frame.sha256)));
   assert.deepEqual(result.frames.map(frame => frame.filename), ['frame-01.jpg', 'frame-02.jpg', 'frame-03.jpg']);
+  assert.ok(result.frames.every(frame => fs.existsSync(frame.path)));
+  assert.deepEqual(result.frames.map(frame => frame.timestampSeconds), [0.333, 1, 1.667]);
 });
