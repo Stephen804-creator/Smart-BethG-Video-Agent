@@ -21,6 +21,7 @@ import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js'
 import { buildMediaPlan } from './planning/media-planner.js';
 import { buildFormatProductionPlan } from './planning/format-production-planner.js';
 import { buildStoryPlan } from './planning/story-planner.js';
+import { createFilmStore } from './film-production.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
 
@@ -35,6 +36,7 @@ const generationsFile = path.join(dataDir, 'generations.jsonl');
 const datasetFile = path.join(dataDir, 'dataset-manifest.jsonl');
 const jobsFile = path.join(dataDir, 'production-jobs.jsonl');
 const sequencesFile = path.join(dataDir, 'sequences.json');
+const filmStore = createFilmStore(path.join(dataDir, 'film-projects.json'));
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -179,6 +181,63 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   appendGeneration(record);
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
+
+app.get('/api/film/projects', (req, res) => {
+  res.json({ projects: filmStore.listProjects() });
+});
+
+app.post('/api/film/projects', (req, res) => {
+  try { res.status(201).json({ project: filmStore.createProject(req.body || {}) }); }
+  catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
+});
+
+app.get('/api/film/projects/:projectId', (req, res) => {
+  const project = filmStore.getProject(req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.json({ project });
+});
+
+app.patch('/api/film/projects/:projectId', (req, res) => {
+  const project = filmStore.updateProject(req.params.projectId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.json({ project });
+});
+
+app.post('/api/film/projects/:projectId/scenes', (req, res) => {
+  const project = filmStore.addScene(req.params.projectId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.status(201).json({ project });
+});
+
+app.post('/api/film/projects/:projectId/shots', (req, res) => {
+  const project = filmStore.addShot(req.params.projectId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.status(201).json({ project });
+});
+
+app.post('/api/film/projects/:projectId/takes', (req, res) => {
+  const take = filmStore.addTake(req.params.projectId, req.body || {});
+  if (!take) return res.status(404).json({ error: 'Film project not found.' });
+  res.status(201).json({ take });
+});
+
+app.post('/api/film/projects/:projectId/shots/:shotId/select-take', (req, res) => {
+  const project = filmStore.selectTake(req.params.projectId, req.params.shotId, req.body?.takeId);
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.json({ project });
+});
+
+app.post('/api/film/projects/:projectId/assets', (req, res) => {
+  const asset = filmStore.addAsset(req.params.projectId, req.body || {});
+  if (!asset) return res.status(404).json({ error: 'Film project not found.' });
+  res.status(201).json({ asset });
+});
+
+app.post('/api/film/projects/:projectId/continuity', (req, res) => {
+  const event = filmStore.addContinuityEvent(req.params.projectId, req.body || {});
+  if (!event) return res.status(404).json({ error: 'Film project not found.' });
+  res.status(201).json({ event });
+});
 
 app.get('/api/projects/:projectId/entities', async (req, res) => {
   try {
