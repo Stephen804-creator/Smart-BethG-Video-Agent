@@ -14,6 +14,7 @@ import { getComfyHealth } from './comfyui.js';
 import { createComfyWorker } from './workers/comfyui-worker.js';
 import { normalizeMediaTask, validateMediaTask } from './workers/media-task.js';
 import { prepareExecutionPlan } from './workers/execution-planner.js';
+import { createProductionRunner } from './orchestration/production-runner.js';
 import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains } from './knowledge/base.js';
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
@@ -32,6 +33,7 @@ const outputDir = path.join(root, 'output');
 const dataDir = path.join(root, 'data');
 const generationsFile = path.join(dataDir, 'generations.jsonl');
 const datasetFile = path.join(dataDir, 'dataset-manifest.jsonl');
+const jobsFile = path.join(dataDir, 'production-jobs.jsonl');
 const sequencesFile = path.join(dataDir, 'sequences.json');
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 
@@ -256,6 +258,37 @@ app.post('/api/media/execution-plan', (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not prepare execution plan.' });
   }
+});
+
+app.post('/api/production/execute', async (req, res) => {
+  try {
+    const graph = req.body?.productionGraph || req.body?.production_graph;
+    if (!graph) return res.status(400).json({ error: 'productionGraph is required.' });
+    const runner = createProductionRunner({
+      outputDir,
+      jobsFile,
+      settings: readSettings,
+      workflowPath: comfyWorkflowPath
+    });
+    const result = await runner.execute(graph, {
+      allowPaid: req.body?.allowPaid === true,
+      preferLocal: req.body?.preferLocal !== false,
+      providerId: req.body?.providerId || ''
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Production execution failed.' });
+  }
+});
+
+app.get('/api/production/jobs/:projectId', (req, res) => {
+  const runner = createProductionRunner({
+    outputDir,
+    jobsFile,
+    settings: readSettings,
+    workflowPath: comfyWorkflowPath
+  });
+  res.json({ jobs: runner.readJobs(req.params.projectId) });
 });
 
 app.get('/api/knowledge', (req, res) => {
