@@ -54,6 +54,7 @@ function App() {
   useEffect(() => {
     fetch(API + '/settings').then(r => r.json()).then(setSettings).catch(() => {});
     loadSequences();
+    loadFilmProjects();
     fetch(API + '/media-formats').then(r => r.json()).then(data => setMediaFormats(data.formats || [])).catch(() => {});
   }, []);
 
@@ -293,6 +294,38 @@ function App() {
       <label>Luma model<select value={settings.lumaModel || 'ray-flash-2'} onChange={e => setSettings({ ...settings, lumaModel: e.target.value })}><option value="ray-flash-2">Ray Flash 2</option><option value="ray-2">Ray 2</option></select></label>
       <div className="row"><button onClick={saveSettings}>Save</button><span className="hint">Credentials stay on the backend settings file and are never returned to the browser.</span></div>
     </section>}
+
+    <section className="panel dashboard-panel">
+      <div className="section-head">
+        <div><div className="eyebrow">WORKSPACE</div><h2>Production dashboard</h2><span className="hint">Resume a project or continue a visual sequence without searching through the workspace.</span></div>
+        <span className="tag">{filmProjects.length} projects · {sequences.length} sequences</span>
+      </div>
+      <div className="dashboard-grid">
+        <div className="dashboard-card dashboard-new">
+          <div className="dashboard-icon">＋</div>
+          <div><strong>Start a film project</strong><span>Open the full production workspace for scenes, shots, takes, assets and continuity.</span></div>
+          <button onClick={() => { setFilmMode(true); setFilmProject(null); setFilmProjectId(''); }}>Create / open production</button>
+        </div>
+        <div className="dashboard-card">
+          <div className="dashboard-card-head"><strong>Film projects</strong><span>{filmProjects.length}</span></div>
+          <div className="dashboard-list">
+            {filmProjects.slice(0, 4).map(project => <button key={project.id} className="dashboard-item" onClick={() => { setFilmMode(true); loadFilmProject(project.id); }}>
+              <span><b>{project.title}</b><small>{project.genre || 'Genre not set'} · {project.scenes?.length || 0} scenes · {project.shots?.length || 0} shots</small></span><span>→</span>
+            </button>)}
+            {!filmProjects.length && <span className="hint">No film projects yet. Start one when you are ready.</span>}
+          </div>
+        </div>
+        <div className="dashboard-card">
+          <div className="dashboard-card-head"><strong>Visual sequences</strong><span>{sequences.length}</span></div>
+          <div className="dashboard-list">
+            {sequences.slice(0, 4).map(sequence => <button key={sequence.id} className="dashboard-item" onClick={() => setSequenceId(sequence.id)}>
+              <span><b>{sequence.title}</b><small>{sequence.shots?.length || 0} shots</small></span><span>→</span>
+            </button>)}
+            {!sequences.length && <span className="hint">No visual sequences yet.</span>}
+          </div>
+        </div>
+      </div>
+    </section>
 
     <section className="panel sequence-panel">
       <div className="section-head">
