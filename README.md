@@ -78,3 +78,10 @@ To execute a real ComfyUI generation:
 6. Use `POST /api/media/generate` for provider-neutral video tasks or the existing ComfyUI provider option.
 
 The example workflow in `workflows/comfyui/api-workflow.example.json` is documentation only; it is not a runnable video workflow. This prevents the application from pretending that a model is installed when it is not.
+
+
+## Product roadmap
+
+The full feature and engineering roadmap is maintained in [docs/FEATURE_ROADMAP.md](./docs/FEATURE_ROADMAP.md). It covers the planned Director Workspace, story/world systems, scene and shot intelligence, continuity, provider routing, generation operations, video understanding, audio, editing, serialized production, evaluation, dataset infrastructure, and future custom-model integration.
+
+Development follows the roadmap incrementally. Features are considered complete only when the underlying data, backend/API, UI, persistence, integration, error handling, and real behavior are implemented—not when a placeholder screen exists.
