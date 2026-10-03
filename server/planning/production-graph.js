@@ -7,8 +7,18 @@ export function buildProductionGraph({ format, storyPlan, visualTasks = [], audi
     nodes.push({ id, type, stage, status: 'planned', ...data });
   };
   const link = (from, to, relation = 'depends_on') => {
-    edges.push({ from, to, relation });
+    if (!from || !to || from === to) return;
+    if (!edges.some(edge => edge.from === from && edge.to === to && edge.relation === relation)) {
+      edges.push({ from, to, relation });
+    }
   };
+
+  const sceneById = new Map((storyPlan.scenes || []).map(scene => [scene.scene_id, scene]));
+  const beatToScene = new Map();
+  for (const scene of storyPlan.scenes || []) {
+    for (const beat of scene.beats || []) beatToScene.set(beat.id || beat.beat_id, scene.scene_id);
+    if (scene.story_beat) beatToScene.set(scene.story_beat, scene.scene_id);
+  }
 
   addNode(projectId + ':story', 'story', 'story', {
     title: storyPlan.project?.title || 'Untitled Project',
@@ -57,11 +67,27 @@ export function buildProductionGraph({ format, storyPlan, visualTasks = [], audi
     previousSceneId = sceneId;
   }
 
+  const sceneNode = sceneId => sceneId ? projectId + ':' + sceneId : null;
+  const shotNode = shotId => shotId ? projectId + ':' + shotId : null;
+
+  const connectTaskContext = (taskNodeId, task) => {
+    const sceneId = task.scene_id || task.sceneId || beatToScene.get(task.beat_id) || null;
+    if (sceneId) link(sceneNode(sceneId), taskNodeId, 'provides-context');
+
+    const scene = sceneById.get(sceneId);
+    const shot = task.shot_id
+      ? (scene?.shot_plan || []).find(item => item.shot_id === task.shot_id)
+      : (format === 'cinematic' && scene?.shot_plan?.[0]);
+
+    if (shot) link(shotNode(shot.shot_id), taskNodeId, 'implements');
+  };
+
   const addTasks = (tasks, type) => {
     for (const task of tasks) {
-      const taskId = projectId + ':' + type + ':' + task.task_id;
+      const taskId = projectId + ':' + type + ':' + (task.task_id || task.id || ('task-' + (nodes.length + 1)));
       addNode(taskId, type, task.stage || task.purpose, task);
       link(projectId + ':story', taskId, 'plans');
+      connectTaskContext(taskId, task);
     }
   };
 
@@ -69,8 +95,28 @@ export function buildProductionGraph({ format, storyPlan, visualTasks = [], audi
   addTasks(visualTasks, 'visual-task');
   addTasks(audioTasks, 'audio-task');
 
+  const visualNodes = nodes.filter(node => node.type === 'visual-task');
+  const audioNodes = nodes.filter(node => node.type === 'audio-task');
+  for (const visual of visualNodes) {
+    const contextScene = visual.scene_id || visual.sceneId || beatToScene.get(visual.beat_id);
+    const previousVisual = visualNodes.find(node =>
+      node !== visual &&
+      (node.scene_id || node.sceneId || beatToScene.get(node.beat_id)) === contextScene
+    );
+    if (previousVisual) link(previousVisual.id, visual.id, 'sequence-before');
+  }
+
+  for (const audio of audioNodes) {
+    for (const visual of visualNodes) {
+      const audioBeats = audio.beat_ids || [];
+      if (audioBeats.length && visual.beat_id && audioBeats.includes(visual.beat_id)) {
+        link(visual.id, audio.id, 'audio-for');
+      }
+    }
+  }
+
   return {
-    schema_version: 'production-graph-v1',
+    schema_version: 'production-graph-v2',
     project_id: projectId,
     format,
     nodes,
@@ -78,7 +124,8 @@ export function buildProductionGraph({ format, storyPlan, visualTasks = [], audi
     summary: {
       nodes: nodes.length,
       edges: edges.length,
-      executable_tasks: nodes.filter(n => n.type === 'visual-task' || n.type === 'audio-task').length
+      executable_tasks: nodes.filter(n => n.type === 'visual-task' || n.type === 'audio-task').length,
+      context_linked_tasks: nodes.filter(n => ['visual-task', 'audio-task'].includes(n.type) && edges.some(e => e.to === n.id && ['provides-context', 'implements'].includes(e.relation))).length
     }
   };
 }
