@@ -17,6 +17,7 @@ import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains } from './know
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
 import { buildMediaPlan } from './planning/media-planner.js';
+import { buildFormatProductionPlan } from './planning/format-production-planner.js';
 import { buildStoryPlan } from './planning/story-planner.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
@@ -240,6 +241,11 @@ app.post('/api/story/plan', (req, res) => {
 app.post('/api/media/plan', (req, res) => {
   try { res.json(buildMediaPlan(req.body || {})); }
   catch (error) { res.status(400).json({ error: error?.message || 'Could not build media plan.' }); }
+});
+
+app.post('/api/media/format-plan', (req, res) => {
+  try { res.json(buildFormatProductionPlan(req.body || {})); }
+  catch (error) { res.status(400).json({ error: error?.message || 'Could not build format production plan.' }); }
 });
 
 app.get('/api/knowledge', (req, res) => {
