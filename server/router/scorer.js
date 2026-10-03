@@ -4,14 +4,22 @@ export function scoreProvider(candidate, request = {}) {
 
   if (!candidate.configured) return -Infinity;
 
+  // If health is known, an unhealthy provider is not eligible.
+  if (candidate.health && candidate.health.ok === false) return -Infinity;
+
+  // Never route to a paid provider when the caller has explicitly disabled paid use.
+  if (request.allowPaid === false && candidate.pricing === 'paid') return -Infinity;
+
   if (request.task === 'text-to-video' && c.textToVideo) score += 40;
   if (request.task === 'image-to-video' && c.imageToVideo) score += 45;
   if (request.task === 'video-to-video' && c.videoToVideo) score += 50;
   if (request.continuation && c.continuation) score += 25;
 
   if (request.preferLocal && candidate.type === 'local-or-remote') score += 20;
-  if (request.preferFree && candidate.id === 'huggingface-ltx') score += 20;
-  if (request.allowPaid === false && candidate.type === 'cloud' && candidate.id !== 'huggingface-ltx') score -= 100;
+  if (request.preferFree && candidate.pricing === 'free-quota') score += 20;
+
+  // Explicit provider preference is stronger than the general scoring rules.
+  if (request.providerId && candidate.id === request.providerId) score += 1000;
 
   return score;
 }
@@ -19,7 +27,7 @@ export function scoreProvider(candidate, request = {}) {
 export function chooseProvider(candidates, request = {}) {
   const ranked = candidates
     .map(candidate => ({ candidate, score: scoreProvider(candidate, request) }))
-    .filter(item => Number.isFinite(item.score))
+    .filter(item => Number.isFinite(item.score) && item.score >= 0)
     .sort((a, b) => b.score - a.score);
 
   return {
