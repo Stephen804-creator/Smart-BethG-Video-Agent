@@ -52,10 +52,41 @@ function App() {
   const [effectDraft, setEffectDraft] = useState({ effect: 'none', intensity: 50, background: 'original', overlay: '', stabilization: false });
   const [audioDraft, setAudioDraft] = useState({ dialogue: 100, music: 70, sfx: 100, ambience: 80 });
   const [workspaceTool, setWorkspaceTool] = useState('');
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  async function apiFetch(path, options = {}) {
+    const response = await apiFetch( path, { credentials: 'include', ...options });
+    if (response.status === 401) {
+      setAuthenticated(false);
+      throw new Error('Authentication required.');
+    }
+    return response;
+  }
+
+  async function login() {
+    setLoginError('');
+    try {
+      const response = await apiFetch( '/auth/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: loginPassword }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Login failed.');
+      setAuthenticated(true);
+      setLoginPassword('');
+    } catch (error) {
+      setLoginError(error.message || 'Login failed.');
+    }
+  }
+
+  async function logout() {
+    await apiFetch( '/auth/logout', { method: 'POST', credentials: 'include' });
+    setAuthenticated(false);
+  }
 
   async function loadSequences() {
     try {
-      const r = await fetch(API + '/sequences');
+      const r = await apiFetch( '/sequences');
       const data = await r.json();
       setSequences(data.sequences || []);
       if (!sequenceId && data.sequences?.[0]) setSequenceId(data.sequences[0].id);
@@ -63,16 +94,21 @@ function App() {
   }
 
   useEffect(() => {
-    fetch(API + '/providers?task=text-to-video&allowPaid=true').then(r => r.json()).then(data => setProviders(data.providers || [])).catch(() => {});
+    apiFetch( '/auth/status', { credentials: 'include' }).then(r => r.json()).then(data => { setAuthenticated(Boolean(data.authenticated)); setAuthReady(true); }).catch(() => setAuthReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    apiFetch('/providers?task=text-to-video&allowPaid=true').then(r => r.json()).then(data => setProviders(data.providers || [])).catch(() => {});
     loadSequences();
     loadFilmProjects();
-    fetch(API + '/media-formats').then(r => r.json()).then(data => setMediaFormats(data.formats || [])).catch(() => {});
-  }, []);
+    apiFetch('/media-formats').then(r => r.json()).then(data => setMediaFormats(data.formats || [])).catch(() => {});
+  }, [authenticated]);
 
   useEffect(() => { if (filmMode) loadFilmProjects(); }, [filmMode]);
 
   async function createSequence() {
-    const r = await fetch(API + '/sequences', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newSequenceTitle || 'Untitled Sequence' }) });
+    const r = await apiFetch( '/sequences', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newSequenceTitle || 'Untitled Sequence' }) });
     const data = await r.json();
     if (data.sequence) {
       setSequences(prev => [data.sequence, ...prev]);
@@ -85,7 +121,7 @@ function App() {
   async function addResultToSequence() {
     const generationId = result?.generation?.id;
     if (!generationId || !sequenceId) return;
-    const r = await fetch(API + '/sequences/' + sequenceId + '/shots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ generationId }) });
+    const r = await apiFetch( '/sequences/' + sequenceId + '/shots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ generationId }) });
     const data = await r.json();
     if (data.sequence) {
       setSequences(prev => prev.map(item => item.id === data.sequence.id ? data.sequence : item));
@@ -99,7 +135,7 @@ function App() {
     setStatus(provider === 'huggingface-ltx' ? 'Sending to LTX…' : provider.startsWith('luma') ? 'Sending to Luma…' : 'Sending to provider…');
     setResult(null);
     try {
-      const r = await fetch(API + '/generate', {
+      const r = await apiFetch( '/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider, prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId })
@@ -120,7 +156,7 @@ function App() {
     setPlanning(true);
     setStatus('Building production plan…');
     try {
-      const r = await fetch(API + '/media/format-plan', {
+      const r = await apiFetch( '/media/format-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -148,7 +184,7 @@ function App() {
     setAssisting(true);
     setStatus('Director assistant is planning the film…');
     try {
-      const r = await fetch(API + '/film/assist', {
+      const r = await apiFetch( '/film/assist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ story: filmIdea, title: newSequenceTitle || 'Untitled Film', genre, aspectRatio: ratio })
@@ -166,13 +202,13 @@ function App() {
   }
 
   async function loadFilmProjects() {
-    const r = await fetch(API + '/film/projects');
+    const r = await apiFetch( '/film/projects');
     const data = await r.json();
     setFilmProjects(data.projects || []);
   }
 
   async function createFilmProject() {
-    const r = await fetch(API + '/film/projects', {
+    const r = await apiFetch( '/film/projects', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: newSequenceTitle || 'Untitled Film', genre, logline: filmIdea })
     });
@@ -186,7 +222,7 @@ function App() {
 
   async function loadFilmProject(id) {
     if (!id) return;
-    const r = await fetch(API + '/film/projects/' + id);
+    const r = await apiFetch( '/film/projects/' + id);
     const data = await r.json();
     if (r.ok) {
       setFilmProject(data.project);
@@ -233,7 +269,7 @@ function App() {
       characters: sceneDraft.characters.split(',').map(x => x.trim()).filter(Boolean),
       props: sceneDraft.props.split(',').map(x => x.trim()).filter(Boolean)
     };
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/scenes/' + selectedSceneId, {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/scenes/' + selectedSceneId, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     const data = await r.json();
@@ -253,11 +289,11 @@ function App() {
         factions: storyDraft.factions.split('\n').map(x => x.trim()).filter(Boolean),
         terminology: storyDraft.terminology.split('\n').map(x => x.trim()).filter(Boolean)
       };
-      let r = await fetch(API + '/film/projects/' + filmProjectId + '/story', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(story) });
+      let r = await apiFetch( '/film/projects/' + filmProjectId + '/story', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(story) });
       if (!r.ok) throw new Error('Could not save story.');
-      r = await fetch(API + '/film/projects/' + filmProjectId + '/world', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(world) });
+      r = await apiFetch( '/film/projects/' + filmProjectId + '/world', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(world) });
       if (!r.ok) throw new Error('Could not save world.');
-      const fresh = await fetch(API + '/film/projects/' + filmProjectId);
+      const fresh = await apiFetch( '/film/projects/' + filmProjectId);
       const data = await fresh.json();
       setFilmProject(data.project);
       setStatus('Story and world saved');
@@ -266,7 +302,7 @@ function App() {
 
   async function addCharacter() {
     if (!filmProjectId || !characterDraft.name.trim()) return;
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/characters', {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/characters', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(characterDraft)
     });
     const data = await r.json();
@@ -278,7 +314,7 @@ function App() {
 
   async function saveShotProductionTools() {
     if (!filmProjectId || !editDraft.shotId) return;
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/shots/' + editDraft.shotId, {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/shots/' + editDraft.shotId, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -296,7 +332,7 @@ function App() {
 
   async function addFilmScene() {
     if (!filmProjectId) return;
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/scenes', {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/scenes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: 'New Scene', description: filmIdea || 'Scene description', dramaticBeat: '', characters: [], blocking: '', action: '', dialogue: '', mood: '', weather: '', props: [] })
     });
@@ -312,7 +348,7 @@ function App() {
 
   async function addFilmShot() {
     if (!filmProjectId) return;
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/shots', {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/shots', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...shotDraft, sceneId: shotDraft.sceneId || selectedSceneId || filmProject?.scenes?.[0]?.id || null })
     });
@@ -326,13 +362,13 @@ function App() {
 
   async function addFilmTake(shotId) {
     if (!filmProjectId || !shotId) return;
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/takes', {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/takes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...takeDraft, shotId })
     });
     const data = await r.json();
     if (r.ok) {
-      const fresh = await fetch(API + '/film/projects/' + filmProjectId);
+      const fresh = await apiFetch( '/film/projects/' + filmProjectId);
       const project = await fresh.json();
       setFilmProject(project.project);
       setStatus('Take ' + data.take.takeNumber + ' logged');
@@ -346,10 +382,10 @@ function App() {
       const form = new FormData();
       form.append('file', file);
       if (shotId) form.append('shotId', shotId);
-      const r = await fetch(API + '/film/projects/' + filmProjectId + '/assets/upload', { method: 'POST', body: form });
+      const r = await apiFetch( '/film/projects/' + filmProjectId + '/assets/upload', { method: 'POST', body: form });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Could not upload media.');
-      const fresh = await fetch(API + '/film/projects/' + filmProjectId);
+      const fresh = await apiFetch( '/film/projects/' + filmProjectId);
       const project = await fresh.json();
       setFilmProject(project.project);
       setStatus('Media imported and inspected');
@@ -362,7 +398,7 @@ function App() {
 
   async function attachAssetToTake(assetId, takeId) {
     if (!filmProjectId || !assetId || !takeId) return;
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/assets/' + assetId + '/attach-take', {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/assets/' + assetId + '/attach-take', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ takeId })
     });
@@ -372,7 +408,7 @@ function App() {
 
   async function reviewFilmProject() {
     if (!filmProjectId) return;
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/assistant', {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/assistant', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
     });
     const data = await r.json();
@@ -380,7 +416,7 @@ function App() {
   }
 
   async function selectFilmTake(shotId, takeId) {
-    const r = await fetch(API + '/film/projects/' + filmProjectId + '/shots/' + shotId + '/select-take', {
+    const r = await apiFetch( '/film/projects/' + filmProjectId + '/shots/' + shotId + '/select-take', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ takeId })
     });
@@ -394,6 +430,23 @@ function App() {
   const selectedFilmShot = filmShots[0] || null;
   const isLuma = provider.startsWith('luma');
   const selectedProviderInfo = providers.find(item => item.id === provider);
+
+  if (!authReady) return <div className="auth-screen"><div className="auth-card">Checking access…</div></div>;
+
+  if (!authenticated) {
+    return (
+      <div className="auth-screen">
+        <form className="auth-card" onSubmit={(event) => { event.preventDefault(); login(); }}>
+          <div className="eyebrow">PRIVATE WORKSPACE</div>
+          <h1>Cinematic Agent</h1>
+          <p>Sign in to access the production workspace.</p>
+          <input type="password" value={loginPassword} onChange={event => setLoginPassword(event.target.value)} placeholder="Access password" autoFocus />
+          {loginError && <div className="auth-error">{loginError}</div>}
+          <button type="submit">Sign in</button>
+        </form>
+      </div>
+    );
+  }
 
   return <div className="app">
     <header>
