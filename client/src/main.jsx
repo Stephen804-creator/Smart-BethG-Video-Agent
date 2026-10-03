@@ -52,6 +52,8 @@ function App() {
     fetch(API + '/media-formats').then(r => r.json()).then(data => setMediaFormats(data.formats || [])).catch(() => {});
   }, []);
 
+  useEffect(() => { if (filmMode) loadFilmProjects(); }, [filmMode]);
+
   async function createSequence() {
     const r = await fetch(API + '/sequences', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newSequenceTitle || 'Untitled Sequence' }) });
     const data = await r.json();
