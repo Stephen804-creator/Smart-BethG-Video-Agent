@@ -323,7 +323,7 @@ function App() {
         <p>{filmAssist.assistant?.message}</p>
         <div className="checklist">{filmAssist.director_checklist?.map((item, i) => <span key={i}>✓ {item}</span>)}</div>
       </div>}
-    </section>
+    </section>}
 
     {filmMode && <section className="panel film-workspace">
       <div className="section-head">
