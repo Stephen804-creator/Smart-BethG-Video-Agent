@@ -10,6 +10,7 @@ import { readSequences, createSequence, addShotToSequence } from './sequences.js
 import { generateWithLuma } from './luma.js';
 import { listProviders } from './router/provider-registry.js';
 import { chooseProvider } from './router/scorer.js';
+import { getComfyHealth } from './comfyui.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -163,16 +164,22 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
 
-app.get('/api/providers', (req, res) => {
+app.get('/api/providers', async (req, res) => {
   const settings = readSettings();
   const providers = listProviders(settings);
+  const comfy = await getComfyHealth(settings.comfyUrl);
+  const enriched = providers.map(provider =>
+    provider.id === 'comfyui'
+      ? { ...provider, configured: comfy.ok, health: comfy }
+      : { ...provider, health: provider.configured ? { ok: true } : { ok: false, detail: 'Not configured.' } }
+  );
   const task = String(req.query.task || 'text-to-video');
   const allowPaid = req.query.allowPaid !== 'false';
   const preferFree = req.query.preferFree === 'true';
   const preferLocal = req.query.preferLocal === 'true';
-  const decision = chooseProvider(providers, { task, allowPaid, preferFree, preferLocal });
+  const decision = chooseProvider(enriched, { task, allowPaid, preferFree, preferLocal });
   res.json({
-    providers,
+    providers: enriched,
     routing: {
       task,
       selected: decision.selected?.id || null,
