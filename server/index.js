@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { Client, handle_file } from '@gradio/client';
 import { findGeneration } from './continuity.js';
+import { readSequences, createSequence, addShotToSequence } from './sequences.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -15,6 +16,7 @@ const settingsFile = path.join(root, 'server', 'settings.json');
 const outputDir = path.join(root, 'output');
 const dataDir = path.join(root, 'data');
 const generationsFile = path.join(dataDir, 'generations.jsonl');
+const sequencesFile = path.join(dataDir, 'sequences.json');
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
@@ -258,6 +260,23 @@ app.get('/api/generations', (req, res) => {
   } catch {
     res.json({ records: [] });
   }
+});
+
+app.get('/api/sequences', (req, res) => {
+  res.json({ sequences: readSequences(sequencesFile).reverse() });
+});
+
+app.post('/api/sequences', (req, res) => {
+  const sequence = createSequence(sequencesFile, req.body?.title);
+  res.status(201).json({ sequence });
+});
+
+app.post('/api/sequences/:id/shots', (req, res) => {
+  const generationId = req.body?.generationId;
+  if (!generationId) return res.status(400).json({ error: 'generationId is required.' });
+  const sequence = addShotToSequence(sequencesFile, req.params.id, generationId);
+  if (!sequence) return res.status(404).json({ error: 'Sequence not found.' });
+  res.json({ sequence });
 });
 
 app.post('/api/generate', async (req, res) => {
