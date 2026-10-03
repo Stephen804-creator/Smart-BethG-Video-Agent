@@ -677,18 +677,9 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
         promptId: result.promptId,
         source: result.source
       };
-      const datasetRecord = createDatasetRecord({ task, result, worker, soundPlan: task.sound, knowledgeRefs: task.metadata.knowledgeRefs || [] });
-      appendDatasetRecord(datasetFile, datasetRecord);
+      const qualityControl = await finalizeGeneratedMedia({ record, task, result, worker });
       appendGeneration(record);
-      let database = { enabled: false, persisted: false };
-      try {
-        const persisted = await saveGenerationToDatabase(datasetRecord);
-        database = { enabled: Boolean(process.env.DATABASE_URL), persisted: Boolean(persisted) };
-      } catch (dbError) {
-        database = { enabled: true, persisted: false, detail: dbError?.message || 'Database write failed.' };
-        console.error('Generation saved locally; database write failed:', dbError);
-      }
-      return { status: 'Completed', videoUrl: result.output, generation: record, database };
+      return { status: 'Completed', videoUrl: result.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
     });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
@@ -819,8 +810,14 @@ app.post('/api/generate', generationRateLimit, async (req, res) => {
           promptId: generated.promptId,
           source: generated.source
         };
+        const qualityControl = await finalizeGeneratedMedia({
+          record,
+          task,
+          result: generated,
+          worker: { id: worker.id, provider: 'comfyui', runtime: worker.runtime }
+        });
         appendGeneration(record);
-        return { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record };
+        return { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
       }
 
       throw new Error('Unknown provider.');
