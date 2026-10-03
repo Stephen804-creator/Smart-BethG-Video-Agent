@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import fs from 'fs';
 
 export function createDatasetRecord({ task, result, evaluation = {}, worker = {}, soundPlan = null, knowledgeRefs = [] }) {
   return {
@@ -58,6 +59,5 @@ export function createDatasetRecord({ task, result, evaluation = {}, worker = {}
 }
 
 export function appendDatasetRecord(file, record) {
-  const fs = require('fs');
   fs.appendFileSync(file, JSON.stringify(record) + '\n');
 }
