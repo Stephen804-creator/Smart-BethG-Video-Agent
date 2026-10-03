@@ -43,3 +43,13 @@ export async function getComfyHistory(baseUrl, promptId) {
   if (!response.ok) throw new Error(`ComfyUI history request failed (${response.status})`);
   return response.json();
 }
+
+export function getComfyViewUrl(baseUrl, media) {
+  const url = normalizeBaseUrl(baseUrl);
+  const params = new URLSearchParams({
+    filename: media.filename,
+    subfolder: media.subfolder || '',
+    type: media.type || 'output'
+  });
+  return `${url}/view?${params.toString()}`;
+}
