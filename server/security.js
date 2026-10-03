@@ -8,6 +8,12 @@ function authSecret() {
   return process.env.APP_SESSION_SECRET || process.env.APP_AUTH_PASSWORD || '';
 }
 
+export function secretsMatch(supplied, expected) {
+  const a = Buffer.from(String(supplied || ''));
+  const b = Buffer.from(String(expected || ''));
+  return a.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 export function authConfigured() {
   return Boolean(process.env.APP_AUTH_PASSWORD && authSecret());
 }
