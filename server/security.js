@@ -14,12 +14,16 @@ export function secretsMatch(supplied, expected) {
   return a.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+function developmentBypassAllowed() {
+  return process.env.NODE_ENV !== 'production' && process.env.ALLOW_INSECURE_LOCAL === 'true';
+}
+
 export function authConfigured() {
   return Boolean(process.env.APP_AUTH_PASSWORD && authSecret());
 }
 
 export function assertAuthConfigured() {
-  if (process.env.NODE_ENV === 'production' && !authConfigured()) {
+  if (!authConfigured() && !developmentBypassAllowed()) {
     throw new Error('Authentication is required in production. Set APP_AUTH_PASSWORD and APP_SESSION_SECRET.');
   }
 }
@@ -106,7 +110,7 @@ export function rateLimitMiddleware({ limit, windowMs, keyPrefix }) {
 
 export function authMiddleware(req, res, next) {
   if (!authConfigured()) {
-    if (process.env.NODE_ENV !== 'production') return next();
+    if (developmentBypassAllowed()) return next();
     return res.status(503).json({ error: 'Authentication is not configured on this server.' });
   }
   if (isAuthenticated(req)) return next();
@@ -114,5 +118,5 @@ export function authMiddleware(req, res, next) {
 }
 
 export function getPublicAuthStatus() {
-  return { required: authConfigured(), mode: authConfigured() ? 'password-session' : 'development-open' };
+  return { required: authConfigured(), mode: authConfigured() ? 'password-session' : (developmentBypassAllowed() ? 'development-open' : 'misconfigured') };
 }
