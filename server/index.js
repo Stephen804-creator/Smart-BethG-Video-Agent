@@ -8,6 +8,8 @@ import { Client, handle_file } from '@gradio/client';
 import { findGeneration } from './continuity.js';
 import { readSequences, createSequence, addShotToSequence } from './sequences.js';
 import { generateWithLuma } from './luma.js';
+import { listProviders } from './router/provider-registry.js';
+import { chooseProvider } from './router/scorer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -160,6 +162,24 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   appendGeneration(record);
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
+
+app.get('/api/providers', (req, res) => {
+  const settings = readSettings();
+  const providers = listProviders(settings);
+  const task = String(req.query.task || 'text-to-video');
+  const allowPaid = req.query.allowPaid !== 'false';
+  const preferFree = req.query.preferFree === 'true';
+  const preferLocal = req.query.preferLocal === 'true';
+  const decision = chooseProvider(providers, { task, allowPaid, preferFree, preferLocal });
+  res.json({
+    providers,
+    routing: {
+      task,
+      selected: decision.selected?.id || null,
+      ranked: decision.ranked.map(item => ({ id: item.candidate.id, score: item.score }))
+    }
+  });
+});
 
 app.get('/api/health', (req, res) => {
   const s = readSettings();
