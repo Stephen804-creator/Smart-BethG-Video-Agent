@@ -47,6 +47,7 @@ const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root,
 const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
 const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
 const generationQueue = createJobQueue({ concurrency: 1, maxQueue: 10 });
+const apiRateLimit = rateLimitMiddleware({ limit: 120, windowMs: 60 * 1000, keyPrefix: 'api' });
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
@@ -75,7 +76,7 @@ app.post('/api/auth/login', authRateLimit, (req, res) => {
 app.post('/api/auth/logout', (req, res) => { clearSessionCookie(res); res.json({ authenticated: false }); });
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
-  return authMiddleware(req, res, next);
+  return authMiddleware(req, res, () => apiRateLimit(req, res, next));
 });
 
 function readSettings() {
