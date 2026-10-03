@@ -215,6 +215,12 @@ app.post('/api/film/projects/:projectId/scenes', (req, res) => {
   res.status(201).json({ project });
 });
 
+app.patch('/api/film/projects/:projectId/scenes/:sceneId', (req, res) => {
+  const project = filmStore.updateScene(req.params.projectId, req.params.sceneId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project or scene not found.' });
+  res.json({ project });
+});
+
 app.post('/api/film/projects/:projectId/shots', (req, res) => {
   const project = filmStore.addShot(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
@@ -251,12 +257,12 @@ app.post('/api/film/projects/:projectId/shots/:shotId/select-take', (req, res) =
   res.json({ project });
 });
 
-app.post('/api/film/projects/:projectId/assets/upload', upload.single('file'), (req, res) => {
+app.post('/api/film/projects/:projectId/assets/upload', upload.single('file'), async (req, res) => {
   try {
     const project = filmStore.getProject(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
     if (!req.file) return res.status(400).json({ error: 'A media file is required.' });
-    const stored = assetStore.saveUploadedFile(req.file);
+    const stored = await assetStore.saveUploadedFile(req.file);
     const asset = filmStore.addAsset(req.params.projectId, {
       ...stored,
       sceneId: req.body?.sceneId || null,
@@ -267,6 +273,30 @@ app.post('/api/film/projects/:projectId/assets/upload', upload.single('file'), (
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not ingest media asset.' });
   }
+});
+
+app.patch('/api/film/projects/:projectId/assets/:assetId', (req, res) => {
+  const asset = filmStore.updateAsset(req.params.projectId, req.params.assetId, req.body || {});
+  if (!asset) return res.status(404).json({ error: 'Film project or asset not found.' });
+  res.json({ asset });
+});
+
+app.post('/api/film/projects/:projectId/assets/:assetId/attach-shot', (req, res) => {
+  const project = filmStore.attachAssetToShot(req.params.projectId, req.params.assetId, req.body?.shotId);
+  if (!project) return res.status(404).json({ error: 'Film project, asset or shot not found.' });
+  res.json({ project });
+});
+
+app.post('/api/film/projects/:projectId/assets/:assetId/attach-take', (req, res) => {
+  const project = filmStore.attachAssetToTake(req.params.projectId, req.params.assetId, req.body?.takeId);
+  if (!project) return res.status(404).json({ error: 'Film project, asset or take not found.' });
+  res.json({ project });
+});
+
+app.get('/api/film/projects/:projectId/assets', (req, res) => {
+  const project = filmStore.getProject(req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.json({ assets: project.assets || [] });
 });
 
 app.post('/api/film/projects/:projectId/assets', (req, res) => {
