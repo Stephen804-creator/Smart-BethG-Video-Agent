@@ -1,5 +1,8 @@
 import { spawn } from 'child_process';
+import crypto from 'crypto';
 import fs from 'fs';
+import path from 'path';
+import { sampleVideoFrames } from './frame-sampler.js';
 
 function runCommand(command, args, { timeoutMs = 120000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -94,6 +97,7 @@ export async function evaluateVideoFile(filePath, options = {}) {
   const stat = fs.statSync(filePath);
   if (!stat.isFile()) throw new Error('Video path is not a file.');
 
+  const evaluationId = options.evaluationId || crypto.randomUUID();
   const probe = await probeMedia(filePath);
   const streams = Array.isArray(probe.streams) ? probe.streams : [];
   const video = streams.find(stream => stream.codec_type === 'video');
@@ -148,34 +152,52 @@ export async function evaluateVideoFile(filePath, options = {}) {
     add('REVIEW', 'LONG_FREEZE', 'A prolonged near-static interval was detected.', temporal);
   }
 
+  let frameSamples = null;
+  try {
+    frameSamples = await sampleVideoFrames(filePath, {
+      count: options.frameSampleCount || 5,
+      outputRoot: options.frameOutputRoot || path.join(path.dirname(filePath), 'evaluation-frames'),
+      evaluationId
+    });
+  } catch (error) {
+    add('REVIEW', 'FRAME_SAMPLING_UNAVAILABLE', 'Representative frame evidence could not be generated.', {
+      error: error.message
+    });
+  }
+
   const failures = findings.filter(item => item.severity === 'FAIL');
   const reviews = findings.filter(item => item.severity === 'REVIEW');
   const decision = failures.length ? 'FAIL' : reviews.length ? 'REVIEW' : 'PASS';
 
   return {
     schemaVersion: 'video-qc-v1',
+    evaluationId,
     evaluator: 'cinematic-agent-technical-qc',
     evaluatedAt: new Date().toISOString(),
     decision,
     technical,
     temporal,
+    evidence: {
+      frameSamples
+    },
     dimensions: {
       technical_integrity: failures.length ? 0 : 1,
       imaging_quality: null,
-      motion_smoothness: temporal.evaluated ? null : null,
+      motion_smoothness: null,
       temporal_flickering: null,
       subject_consistency: null,
       background_consistency: null,
       prompt_adherence: null,
       cinematic_intent: null,
       continuity: null,
-      audio_quality: audio ? null : null
+      audio_quality: null
     },
     findings,
     limitations: [
       'Semantic vision evaluation is not yet connected.',
       'Prompt adherence is not inferred without a vision/semantic evaluator.',
       'Character/reference consistency is not inferred without reference-aware vision evaluation.',
+      'Frame sampling provides evidence but does not yet classify image quality, flicker, motion or semantic content.',
       'Audio quality is only detected as stream presence at this stage.'
     ]
   };
