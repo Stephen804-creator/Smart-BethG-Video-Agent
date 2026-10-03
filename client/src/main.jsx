@@ -132,18 +132,32 @@ function App() {
   async function generate() {
     if (!prompt.trim() || generating) return;
     setGenerating(true);
-    setStatus(provider === 'huggingface-ltx' ? 'Sending to LTX…' : provider.startsWith('luma') ? 'Sending to Luma…' : 'Sending to provider…');
+    setStatus(provider === 'huggingface-ltx' ? 'Queued for LTX…' : provider.startsWith('luma') ? 'Queued for Luma…' : 'Queued for provider…');
     setResult(null);
     try {
-      const r = await apiFetch( '/generate', {
+      const r = await apiFetch('/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider, prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId })
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error + (data.detail ? ` — ${data.detail}` : ''));
-      setResult(data);
-      setStatus('Completed');
+      const queued = await r.json();
+      if (!r.ok) throw new Error(queued.error || 'Could not queue generation.');
+      const jobId = queued.job?.id;
+      if (!jobId) throw new Error('The server did not return a job ID.');
+
+      for (;;) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        const poll = await apiFetch('/jobs/' + jobId);
+        const data = await poll.json();
+        if (!poll.ok) throw new Error(data.error || 'Could not read generation job.');
+        if (data.job?.status === 'completed') {
+          setResult(data.job.result);
+          setStatus('Completed');
+          break;
+        }
+        if (data.job?.status === 'failed') throw new Error(data.job.error || 'Generation failed.');
+        setStatus(data.job?.status === 'running' ? 'Generating…' : 'Queued…');
+      }
     } catch (e) {
       setStatus(e.message || 'Generation failed');
     } finally {
