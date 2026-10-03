@@ -3,6 +3,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 import { Client } from '@gradio/client';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,20 @@ function getVideoResult(data) {
   if (first && typeof first === 'object' && first.video) return first.video;
   if (first && typeof first === 'object' && (first.url || first.path)) return first;
   return null;
+}
+
+function probeDuration(filepath) {
+  return new Promise((resolve) => {
+    const probe = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
+    let output = '';
+    probe.stdout.on('data', chunk => { output += chunk.toString(); });
+    probe.on('error', () => resolve(null));
+    probe.on('close', code => {
+      if (code !== 0) return resolve(null);
+      const seconds = Number.parseFloat(output.trim());
+      resolve(Number.isFinite(seconds) ? Number(seconds.toFixed(3)) : null);
+    });
+  });
 }
 
 async function generateWithLtx({ prompt, duration, ratio }) {
@@ -110,6 +125,7 @@ async function generateWithLtx({ prompt, duration, ratio }) {
   fs.writeFileSync(filepath, buffer);
 
   const seed = Array.isArray(finalData) && typeof finalData[1] === 'number' ? finalData[1] : null;
+  const actualDuration = await probeDuration(filepath);
   const record = {
     id,
     createdAt: new Date().toISOString(),
@@ -118,7 +134,9 @@ async function generateWithLtx({ prompt, duration, ratio }) {
     model: 'LTX Video 0.9.8 13B Distilled',
     mode: 'text-to-video',
     prompt,
-    duration: Number(duration),
+    requestedDuration: Number(duration),
+    duration: actualDuration ?? Number(duration),
+    durationMeasured: actualDuration !== null,
     ratio,
     height: dimensions.height,
     width: dimensions.width,
