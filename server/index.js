@@ -246,6 +246,49 @@ app.post('/api/media/plan', (req, res) => {
   catch (error) { res.status(400).json({ error: error?.message || 'Could not build media plan.' }); }
 });
 
+app.post('/api/film/assist', (req, res) => {
+  try {
+    const input = req.body || {};
+    const story = String(input.story || input.prompt || '').trim();
+    if (!story) return res.status(400).json({ error: 'Describe the film, scene, or idea you want help with.' });
+    const storyPlan = buildStoryPlan({
+      title: input.title || 'Untitled Film',
+      story,
+      genre: input.genre || 'drama',
+      characters: input.characters || [],
+      locations: input.locations || [],
+      props: input.props || []
+    });
+    const formatPlan = buildFormatProductionPlan({
+      format: 'cinematic',
+      genre: input.genre || 'drama',
+      prompt: story,
+      title: input.title || 'Untitled Film',
+      storyPlan,
+      aspectRatio: input.aspectRatio || '16:9',
+      quality: input.quality || 'cinematic'
+    });
+    res.json({
+      assistant: {
+        mode: 'normal-film-production',
+        message: 'I turned the idea into a film-production starting plan. You remain the director; the agent organizes the work and explains the next practical step.',
+        next_step: 'Review the scenes and shot plan before generating anything.'
+      },
+      story_plan: storyPlan,
+      production_plan: formatPlan,
+      director_checklist: [
+        'Confirm the story and scene order.',
+        'Review characters, locations, props and continuity.',
+        'Review each shot framing, camera movement and lighting.',
+        'Choose whether each shot should be filmed normally, generated with AI, or imported from existing footage.',
+        'Record takes and notes, then assemble the approved material.'
+      ]
+    });
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Film assistant could not build the plan.' });
+  }
+});
+
 app.post('/api/media/format-plan', (req, res) => {
   try { res.json(buildFormatProductionPlan(req.body || {})); }
   catch (error) { res.status(400).json({ error: error?.message || 'Could not build format production plan.' }); }
