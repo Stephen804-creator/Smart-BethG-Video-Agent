@@ -25,7 +25,8 @@ export function normalizeMediaTask(input = {}) {
       maxCost: input.constraints?.maxCost ?? null
     },
     continuity: input.continuity || null,
-    metadata: input.metadata || {}
+    metadata: input.metadata || {},
+    sound: input.sound || {}
   };
 }
 
