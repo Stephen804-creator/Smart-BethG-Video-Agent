@@ -85,7 +85,7 @@ function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
   ].join(' ');
 }
 
-async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting }) {
+async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId }) {
   const shotPrompt = buildShotPrompt({ prompt, framing, cameraMovement, lighting });
   const settings = readSettings();
   const space = settings.hfSpace || 'Lightricks/ltx-video-distilled';
