@@ -83,7 +83,7 @@ function App() {
           <label>Camera movement<select value={cameraMovement} onChange={e => setCameraMovement(e.target.value)}><option>static camera</option><option>slow push-in</option><option>slow pull-back</option><option>slow pan</option><option>slow tracking shot</option></select></label>
           <label>Lighting<select value={lighting} onChange={e => setLighting(e.target.value)}><option>natural cinematic</option><option>soft daylight</option><option>dramatic low light</option><option>night neon</option><option>warm sunset</option></select></label>
         </div>
-        {referenceGenerationId && <div className="hint">Continuity reference: previous generated shot will guide the next shot.</div>}
+        {referenceGenerationId && <div className="hint">Visual continuity reference selected: the previous generated video will be sent to LTX video-to-video for the next shot.</div>}
         <button className="generate" disabled={generating} onClick={generate}>{generating ? 'Generating…' : 'Generate cinematic shot'} <span>→</span></button>
       </section>
 
@@ -92,7 +92,7 @@ function App() {
         {!result ? <div className="empty"><div className="play">▶</div><strong>Your generated shot will appear here</strong><span>First real engine: LTX Video through Hugging Face.</span></div> : <div className="result">
           <div className="resultbox">{result.videoUrl ? <video src={result.videoUrl} controls playsInline/> : <div><strong>{result.message || 'No video returned'}</strong><small>{result.detail || ''}</small></div>}</div>
           {result.generation && <div className="meta"><span>{result.generation.model}</span><span>{result.generation.duration}s</span><span>{result.generation.width}×{result.generation.height}</span></div>}
-          <div className="actions">{result.videoUrl && <a href={result.videoUrl} download className="button">Download</a>}<button onClick={() => { if (result?.generation?.id) { setReferenceGenerationId(result.generation.id); setPrompt(prompt + ' Continue the same scene while preserving the character, clothing, location and visual identity. Change only what this new shot description requests.'); setStatus('Continuity reference selected'); } }}>Use as next shot</button></div>
+          <div className="actions">{result.videoUrl && <a href={result.videoUrl} download className="button">Download</a>}<button onClick={() => { if (result?.generation?.id) { setReferenceGenerationId(result.generation.id); setPrompt(prompt + ' Continue the same scene while preserving the character, clothing, location and visual identity. Change only what this new shot description requests.'); setStatus('Visual continuity reference selected'); } }}>Use as next shot</button></div>
         </div>}
       </section>
     </main>
