@@ -50,6 +50,7 @@ function App() {
   const [productionTool, setProductionTool] = useState('');
   const [editDraft, setEditDraft] = useState({ shotId: '', trimIn: 0, trimOut: 0, speed: 1, transition: 'cut', volume: 100 });
   const [effectDraft, setEffectDraft] = useState({ effect: 'none', intensity: 50, background: 'original', overlay: '', stabilization: false });
+  const [audioDraft, setAudioDraft] = useState({ dialogue: 100, music: 70, sfx: 100, ambience: 80 });
 
   async function loadSequences() {
     try {
@@ -272,6 +273,24 @@ function App() {
     setFilmProject(data.project);
     setCharacterDraft({ name:'', role:'', appearance:'', personality:'', description:'' });
     setStatus('Character added to story bible');
+  }
+
+  async function saveShotProductionTools() {
+    if (!filmProjectId || !editDraft.shotId) return;
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/shots/' + editDraft.shotId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        duration,
+        edit: editDraft,
+        effects: effectDraft,
+        audioMix: audioDraft
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) { setStatus(data.error || 'Could not save shot production settings.'); return; }
+    setFilmProject(data.project);
+    setStatus('Shot production settings saved');
   }
 
   async function addFilmScene() {
@@ -541,7 +560,8 @@ function App() {
               <label>Transition<select value={editDraft.transition} onChange={e => setEditDraft({...editDraft,transition:e.target.value})}><option>cut</option><option>cross dissolve</option><option>fade</option><option>dip to black</option><option>match cut</option></select></label>
               <label>Volume %<input type="number" min="0" max="200" value={editDraft.volume} onChange={e => setEditDraft({...editDraft,volume:Number(e.target.value)})}/></label>
             </div>
-            <div className="tool-note">These are edit instructions for the shot. The actual media render/export layer will apply them once the editing engine is connected.</div>
+            <div className="tool-actions"><button disabled={!editDraft.shotId} onClick={saveShotProductionTools}>Save shot edit settings</button></div>
+            <div className="tool-note">These settings are now stored as production metadata on the shot. The media render/export engine will apply the actual trim, transition and speed operations when connected.</div>
           </div>}
 
           {productionTool === 'effects' && <div className="production-tool-panel">
@@ -553,17 +573,18 @@ function App() {
               <label>Overlay<input value={effectDraft.overlay} onChange={e => setEffectDraft({...effectDraft,overlay:e.target.value})} placeholder="Optional visual layer"/></label>
             </div>
             <label className="tool-check"><input type="checkbox" checked={effectDraft.stabilization} onChange={e => setEffectDraft({...effectDraft,stabilization:e.target.checked})}/> Stabilize camera movement</label>
+            <div className="tool-actions"><button disabled={!editDraft.shotId} onClick={saveShotProductionTools}>Save effects & background settings</button></div>
           </div>}
 
           {productionTool === 'audio' && <div className="production-tool-panel">
             <div className="tool-panel-head"><strong>Audio</strong><span>Keep dialogue, ambience, music and SFX controls close to the shot.</span></div>
             <div className="tool-control-grid">
-              <label>Dialogue volume %<input type="number" min="0" max="200" defaultValue="100"/></label>
-              <label>Music volume %<input type="number" min="0" max="200" defaultValue="70"/></label>
-              <label>SFX volume %<input type="number" min="0" max="200" defaultValue="100"/></label>
-              <label>Ambience volume %<input type="number" min="0" max="200" defaultValue="80"/></label>
+              <label>Dialogue volume %<input type="number" min="0" max="200" value={audioDraft.dialogue} onChange={e => setAudioDraft({...audioDraft,dialogue:Number(e.target.value)})}/></label>
+              <label>Music volume %<input type="number" min="0" max="200" value={audioDraft.music} onChange={e => setAudioDraft({...audioDraft,music:Number(e.target.value)})}/></label>
+              <label>SFX volume %<input type="number" min="0" max="200" value={audioDraft.sfx} onChange={e => setAudioDraft({...audioDraft,sfx:Number(e.target.value)})}/></label>
+              <label>Ambience volume %<input type="number" min="0" max="200" value={audioDraft.ambience} onChange={e => setAudioDraft({...audioDraft,ambience:Number(e.target.value)})}/></label>
             </div>
-            <div className="tool-actions"><button className="ghost" onClick={() => setStatus('Audio mix instructions prepared for this shot')}>Prepare audio mix</button></div>
+            <div className="tool-actions"><button disabled={!editDraft.shotId} onClick={saveShotProductionTools}>Save audio mix settings</button></div>
           </div>}
 
           {productionTool === 'layers' && <div className="production-tool-panel">
