@@ -13,6 +13,9 @@ import { chooseProvider } from './router/scorer.js';
 import { getComfyHealth } from './comfyui.js';
 import { createComfyWorker } from './workers/comfyui-worker.js';
 import { normalizeMediaTask, validateMediaTask } from './workers/media-task.js';
+import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains } from './knowledge/base.js';
+import { normalizeSoundPlan } from './sound/schema.js';
+import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -22,6 +25,7 @@ const settingsFile = path.join(root, 'server', 'settings.json');
 const outputDir = path.join(root, 'output');
 const dataDir = path.join(root, 'data');
 const generationsFile = path.join(dataDir, 'generations.jsonl');
+const datasetFile = path.join(dataDir, 'dataset-manifest.jsonl');
 const sequencesFile = path.join(dataDir, 'sequences.json');
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 
@@ -168,6 +172,16 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
 
+app.get('/api/knowledge', (req, res) => {
+  res.json({ domains: listKnowledgeDomains(), results: searchKnowledge(req.query.q || '', req.query.domain || '') });
+});
+
+app.get('/api/knowledge/:id', (req, res) => {
+  const entry = getKnowledgeEntry(req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Knowledge entry not found.' });
+  res.json({ entry });
+});
+
 app.get('/api/workers', async (req, res) => {
   const settings = readSettings();
   const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
@@ -177,12 +191,14 @@ app.get('/api/workers', async (req, res) => {
 app.post('/api/media/generate', async (req, res) => {
   try {
     const task = normalizeMediaTask(req.body || {});
+    task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
     if (req.body?.workerId && req.body.workerId !== 'comfyui-worker') return res.status(400).json({ error: 'Unknown worker.' });
     const settings = readSettings();
     const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
     const result = await worker.execute(task);
-    const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: result.output, promptId: result.promptId, source: result.source };
+    const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, sound: task.sound, output: result.output, promptId: result.promptId, source: result.source };
+    appendDatasetRecord(datasetFile, createDatasetRecord({ task, result, worker, soundPlan: task.sound, knowledgeRefs: task.metadata.knowledgeRefs || [] }));
     appendGeneration(record);
     res.json({ status: 'Completed', videoUrl: result.output, generation: record });
   } catch (error) {
