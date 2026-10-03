@@ -7,6 +7,7 @@ import { spawn } from 'child_process';
 import { Client, handle_file } from '@gradio/client';
 import { findGeneration } from './continuity.js';
 import { readSequences, createSequence, addShotToSequence } from './sequences.js';
+import { generateWithLuma } from './luma.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -32,6 +33,8 @@ function readSettings() {
     return {
       hfSpace: 'Lightricks/ltx-video-distilled',
       hfToken: '',
+      lumaApiKey: '',
+      lumaModel: 'ray-flash-2',
       comfyUrl: 'http://127.0.0.1:8188'
     };
   }
@@ -97,147 +100,75 @@ async function runLtxJob(client, endpoint, payload) {
     if (message.type === 'data') finalData = message.data;
   }
 
-  if (!finalData) {
-    throw new Error(lastStatus?.message || 'LTX completed without returning a video.');
-  }
-
+  if (!finalData) throw new Error(lastStatus?.message || 'LTX completed without returning a video.');
   return finalData;
 }
 
 async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId }) {
   const reference = referenceGenerationId ? findGeneration(generationsFile, referenceGenerationId) : null;
   const hasVisualReference = Boolean(reference?.output);
-
-  const continuityPrompt = reference
-    ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.'
-    : '';
-
-  const shotPrompt = buildShotPrompt({
-    prompt: [continuityPrompt, prompt].filter(Boolean).join(' '),
-    framing,
-    cameraMovement,
-    lighting
-  });
+  const continuityPrompt = reference ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.' : '';
+  const shotPrompt = buildShotPrompt({ prompt: [continuityPrompt, prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
 
   const settings = readSettings();
   const space = settings.hfSpace || 'Lightricks/ltx-video-distilled';
   const token = settings.hfToken || process.env.HF_TOKEN || undefined;
   const dimensions = dimensionsForRatio(ratio);
-
-  const client = await Client.connect(space, {
-    ...(token ? { token } : {}),
-    events: ['status', 'data']
-  });
-
+  const client = await Client.connect(space, { ...(token ? { token } : {}), events: ['status', 'data'] });
   const seed = Math.floor(Math.random() * 2147483647);
   let finalData;
   let mode = 'text-to-video';
 
   if (hasVisualReference) {
     const referencePath = path.join(root, reference.output.replace(/^\/output\//, ''));
-    if (!fs.existsSync(referencePath)) {
-      throw new Error('The selected continuity video is no longer available on the server.');
-    }
-
+    if (!fs.existsSync(referencePath)) throw new Error('The selected continuity video is no longer available on the server.');
     mode = 'video-to-video';
     const inputVideo = await handle_file(referencePath);
-
-    const payload = [
-      shotPrompt,
-      'worst quality, inconsistent motion, blurry, jittery, distorted',
-      null,
-      inputVideo,
-      dimensions.height,
-      dimensions.width,
-      'video-to-video',
-      Number(duration),
-      9,
-      seed,
-      true,
-      1,
-      true
-    ];
-
-    finalData = await runLtxJob(client, '/video_to_video', payload);
+    finalData = await runLtxJob(client, '/video_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, inputVideo, dimensions.height, dimensions.width, 'video-to-video', Number(duration), 9, seed, true, 1, true]);
   } else {
-    const payload = [
-      shotPrompt,
-      'worst quality, inconsistent motion, blurry, jittery, distorted',
-      null,
-      null,
-      dimensions.height,
-      dimensions.width,
-      'text-to-video',
-      Number(duration),
-      9,
-      seed,
-      true,
-      1,
-      true
-    ];
-
-    finalData = await runLtxJob(client, '/text_to_video', payload);
+    finalData = await runLtxJob(client, '/text_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, null, dimensions.height, dimensions.width, 'text-to-video', Number(duration), 9, seed, true, 1, true]);
   }
 
   const video = getVideoResult(finalData);
-  if (!video?.url) {
-    throw new Error('LTX returned a result, but no downloadable video URL was provided.');
-  }
-
+  if (!video?.url) throw new Error('LTX returned a result, but no downloadable video URL was provided.');
   const response = await fetch(video.url);
   if (!response.ok) throw new Error(`Could not download generated video (${response.status}).`);
-
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const filename = `${id}.mp4`;
   const filepath = path.join(outputDir, filename);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(filepath, buffer);
-
+  fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
   const actualDuration = await probeDuration(filepath);
-  const record = {
-    id,
-    createdAt: new Date().toISOString(),
-    provider: 'huggingface',
-    space,
-    model: 'LTX Video 0.9.8 13B Distilled',
-    mode,
-    prompt,
-    generatedPrompt: shotPrompt,
-    referenceGenerationId: reference?.id || null,
-    framing,
-    cameraMovement,
-    lighting,
-    requestedDuration: Number(duration),
-    duration: actualDuration ?? Number(duration),
-    durationMeasured: actualDuration !== null,
-    ratio,
-    height: dimensions.height,
-    width: dimensions.width,
-    seed,
-    output: `/output/${filename}`
-  };
+  const record = { id, createdAt: new Date().toISOString(), provider: 'huggingface', space, model: 'LTX Video 0.9.8 13B Distilled', mode, prompt, generatedPrompt: shotPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: Number(duration), duration: actualDuration ?? Number(duration), durationMeasured: actualDuration !== null, ratio, height: dimensions.height, width: dimensions.width, seed, output: `/output/${filename}` };
   appendGeneration(record);
+  return { provider: 'Hugging Face • LTX Video', status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
+}
 
-  return {
-    provider: 'Hugging Face • LTX Video',
-    status: 'Completed',
-    videoUrl: `/output/${filename}`,
-    generation: record
-  };
+async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model }) {
+  const settings = readSettings();
+  const apiKey = settings.lumaApiKey || process.env.LUMAAI_API_KEY || '';
+  const reference = referenceGenerationId ? findGeneration(generationsFile, referenceGenerationId) : null;
+  const finalPrompt = buildShotPrompt({ prompt: [reference ? 'Preserve the established visual identity from the previous shot.' : '', prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
+  const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2' });
+  const response = await fetch(videoUrl);
+  if (!response.ok) throw new Error(`Could not download Luma video (${response.status}).`);
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const filename = `${id}.mp4`;
+  const filepath = path.join(outputDir, filename);
+  fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
+  const actualDuration = await probeDuration(filepath);
+  const record = { id, createdAt: new Date().toISOString(), provider: 'luma', model: generation.model || model, mode: 'text-to-video', prompt, generatedPrompt: finalPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: null, duration: actualDuration, durationMeasured: actualDuration !== null, ratio, width: null, height: null, providerGenerationId: generation.id, output: `/output/${filename}` };
+  appendGeneration(record);
+  return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'cinematic-agent-v1', provider: 'huggingface-ltx' });
+  const s = readSettings();
+  res.json({ ok: true, service: 'cinematic-agent-v1', providers: { huggingfaceLtx: Boolean(s.hfToken || process.env.HF_TOKEN), luma: Boolean(s.lumaApiKey || process.env.LUMAAI_API_KEY), comfyui: Boolean(s.comfyUrl) } });
 });
 
 app.get('/api/settings', (req, res) => {
   const s = readSettings();
-  res.json({
-    hfSpace: s.hfSpace || 'Lightricks/ltx-video-distilled',
-    hfToken: '',
-    hasHFToken: Boolean(s.hfToken || process.env.HF_TOKEN),
-    comfyUrl: s.comfyUrl || 'http://127.0.0.1:8188'
-  });
+  res.json({ hfSpace: s.hfSpace || 'Lightricks/ltx-video-distilled', hfToken: '', hasHFToken: Boolean(s.hfToken || process.env.HF_TOKEN), lumaApiKey: '', hasLumaApiKey: Boolean(s.lumaApiKey || process.env.LUMAAI_API_KEY), lumaModel: s.lumaModel || 'ray-flash-2', comfyUrl: s.comfyUrl || 'http://127.0.0.1:8188' });
 });
 
 app.post('/api/settings', (req, res) => {
@@ -246,6 +177,8 @@ app.post('/api/settings', (req, res) => {
   const settings = {
     hfSpace: incoming.hfSpace || old.hfSpace || 'Lightricks/ltx-video-distilled',
     hfToken: incoming.hfToken && incoming.hfToken !== '••••••••' ? incoming.hfToken : old.hfToken || '',
+    lumaApiKey: incoming.lumaApiKey && incoming.lumaApiKey !== '••••••••' ? incoming.lumaApiKey : old.lumaApiKey || '',
+    lumaModel: ['ray-flash-2', 'ray-2'].includes(incoming.lumaModel) ? incoming.lumaModel : old.lumaModel || 'ray-flash-2',
     comfyUrl: incoming.comfyUrl || old.comfyUrl || 'http://127.0.0.1:8188'
   };
   writeSettings(settings);
@@ -255,21 +188,13 @@ app.post('/api/settings', (req, res) => {
 app.get('/api/generations', (req, res) => {
   try {
     const lines = fs.readFileSync(generationsFile, 'utf8').trim().split('\n').filter(Boolean);
-    const records = lines.map(line => JSON.parse(line)).reverse();
-    res.json({ records });
-  } catch {
-    res.json({ records: [] });
-  }
+    res.json({ records: lines.map(line => JSON.parse(line)).reverse() });
+  } catch { res.json({ records: [] }); }
 });
 
-app.get('/api/sequences', (req, res) => {
-  res.json({ sequences: readSequences(sequencesFile).reverse() });
-});
+app.get('/api/sequences', (req, res) => res.json({ sequences: readSequences(sequencesFile).reverse() }));
 
-app.post('/api/sequences', (req, res) => {
-  const sequence = createSequence(sequencesFile, req.body?.title);
-  res.status(201).json({ sequence });
-});
+app.post('/api/sequences', (req, res) => res.status(201).json({ sequence: createSequence(sequencesFile, req.body?.title) }));
 
 app.post('/api/sequences/:id/shots', (req, res) => {
   const generationId = req.body?.generationId;
@@ -285,34 +210,23 @@ app.post('/api/generate', async (req, res) => {
 
   try {
     if (provider === 'huggingface-ltx') {
-      const allowedDurations = [2, 4, 6, 8];
-      const safeDuration = allowedDurations.includes(Number(duration)) ? Number(duration) : 2;
+      const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
       const safeRatio = ['16:9', '9:16', '1:1'].includes(ratio) ? ratio : '16:9';
-      return res.json(await generateWithLtx({
-        prompt: prompt.trim(),
-        duration: safeDuration,
-        ratio: safeRatio,
-        framing,
-        cameraMovement,
-        lighting,
-        referenceGenerationId
-      }));
+      return res.json(await generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId }));
     }
 
-    if (provider === 'comfyui') {
-      return res.status(501).json({
-        error: 'ComfyUI is not connected yet.',
-        detail: 'The provider interface is reserved for the next engine. The first real engine is Hugging Face LTX.'
-      });
+    if (provider === 'luma-ray-flash' || provider === 'luma-ray-2') {
+      const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
+      const model = provider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
+      return res.json(await generateLumaShot({ prompt: prompt.trim(), ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model }));
     }
+
+    if (provider === 'comfyui') return res.status(501).json({ error: 'ComfyUI is not connected yet.', detail: 'The provider slot is reserved for local/open models such as Wan 2.2 and HunyuanVideo.' });
 
     return res.status(400).json({ error: 'Unknown provider.' });
   } catch (error) {
     console.error(error);
-    return res.status(502).json({
-      error: 'Video generation failed.',
-      detail: error?.message || 'Unknown provider error.'
-    });
+    res.status(502).json({ error: 'Video generation failed.', detail: error?.message || 'Unknown provider error.' });
   }
 });
 
@@ -325,6 +239,4 @@ if (fs.existsSync(clientDist)) {
   });
 }
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Cinematic Agent listening on port ${port}`);
-});
+app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
