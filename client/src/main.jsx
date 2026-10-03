@@ -35,7 +35,7 @@ function App() {
   const [filmProjects, setFilmProjects] = useState([]);
   const [filmProjectId, setFilmProjectId] = useState('');
   const [filmProject, setFilmProject] = useState(null);
-  const [shotDraft, setShotDraft] = useState({ framing: 'medium shot', angle: 'eye level', movement: 'static', lens: '35mm', lighting: 'natural cinematic', audio: 'production sound', description: '' });
+  const [shotDraft, setShotDraft] = useState({ sceneId: '', framing: 'medium shot', angle: 'eye level', movement: 'static', lens: '35mm', lighting: 'natural cinematic', audio: 'production sound', description: '' });
   const [takeDraft, setTakeDraft] = useState({ camera: '', lens: '35mm', fps: 24, shutter: '1/48', iso: '400', whiteBalance: '5600K', location: '', mediaUri: '', notes: '' });
   const [filmTab, setFilmTab] = useState('shots');
   const [filmReview, setFilmReview] = useState(null);
@@ -289,7 +289,7 @@ function App() {
     if (!filmProjectId) return;
     const r = await fetch(API + '/film/projects/' + filmProjectId + '/shots', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(shotDraft)
+      body: JSON.stringify({ ...shotDraft, sceneId: shotDraft.sceneId || selectedSceneId || filmProject?.scenes?.[0]?.id || null })
     });
     const data = await r.json();
     if (r.ok) {
@@ -542,6 +542,10 @@ function App() {
             <div className="subhead"><strong>Shot list</strong><span className="hint">{filmShots.length} shots</span></div>
             <div className="shot-form">
               <div className="grid3">
+                <label>Scene<select value={shotDraft.sceneId || selectedSceneId || ''} onChange={e => setShotDraft({...shotDraft,sceneId:e.target.value})}>
+                  <option value="">Choose scene</option>
+                  {(filmProject.scenes || []).map(s => <option key={s.id} value={s.id}>Scene {s.number} · {s.title}</option>)}
+                </select></label>
                 <label>Framing<select value={shotDraft.framing} onChange={e => setShotDraft({...shotDraft,framing:e.target.value})}><option>wide shot</option><option>full shot</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label>
                 <label>Angle<select value={shotDraft.angle} onChange={e => setShotDraft({...shotDraft,angle:e.target.value})}><option>eye level</option><option>low angle</option><option>high angle</option><option>over the shoulder</option><option>POV</option></select></label>
                 <label>Lens<input value={shotDraft.lens} onChange={e => setShotDraft({...shotDraft,lens:e.target.value})}/></label>
