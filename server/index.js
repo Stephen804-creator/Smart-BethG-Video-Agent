@@ -210,7 +210,7 @@ app.get('/api/generations', (req, res) => {
 });
 
 app.post('/api/generate', async (req, res) => {
-  const { provider, prompt, duration, ratio, framing, cameraMovement, lighting } = req.body || {};
+  const { provider, prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId } = req.body || {};
   if (!prompt?.trim()) return res.status(400).json({ error: 'A scene description is required.' });
 
   try {
