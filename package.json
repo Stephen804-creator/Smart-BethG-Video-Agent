@@ -14,7 +14,8 @@
     "@gradio/client": "^2.0.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.4",
