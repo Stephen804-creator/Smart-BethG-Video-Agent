@@ -5,7 +5,7 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const buckets = new Map();
 
 function authSecret() {
-  return process.env.APP_SESSION_SECRET || process.env.APP_AUTH_PASSWORD || '';
+  return process.env.APP_SESSION_SECRET || '';
 }
 
 export function secretsMatch(supplied, expected) {
@@ -19,7 +19,7 @@ function developmentBypassAllowed() {
 }
 
 export function authConfigured() {
-  return Boolean(process.env.APP_AUTH_PASSWORD && authSecret());
+  return Boolean(process.env.APP_AUTH_PASSWORD && process.env.APP_SESSION_SECRET);
 }
 
 export function assertAuthConfigured() {
