@@ -218,7 +218,7 @@ app.post('/api/generate', async (req, res) => {
       const allowedDurations = [2, 4, 6, 8];
       const safeDuration = allowedDurations.includes(Number(duration)) ? Number(duration) : 2;
       const safeRatio = ['16:9', '9:16', '1:1'].includes(ratio) ? ratio : '16:9';
-      return res.json(await generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting }));
+      return res.json(await generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId }));
     }
 
     if (provider === 'comfyui') {
