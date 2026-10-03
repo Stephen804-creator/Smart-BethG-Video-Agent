@@ -7,13 +7,13 @@ const FORMAT_PIPELINES = {
     stages: ['story', 'voice', 'sound-design', 'mix'],
     requiredAssets: ['script', 'voice-profile'],
     taskTemplates: [
-      ['narration', 'Create narrator voice takes aligned to story beats.'],
-      ['dialogue', 'Create character dialogue takes and speaker timing.'],
-      ['ambience', 'Create location ambience and room tone.'],
-      ['foley', 'Create physical-action Foley synchronized to beats.'],
-      ['sfx', 'Create story-specific sound effects.'],
-      ['music', 'Create or select music cues for emotional beats.'],
-      ['mix', 'Assemble dialogue, ambience, Foley, SFX and music into a final audio timeline.']
+      ['voice', 'narration', 'Create narrator voice takes aligned to story beats.'],
+      ['voice', 'dialogue', 'Create character dialogue takes and speaker timing.'],
+      ['sound-design', 'ambience', 'Create location ambience and room tone.'],
+      ['sound-design', 'foley', 'Create physical-action Foley synchronized to beats.'],
+      ['sound-design', 'sfx', 'Create story-specific sound effects.'],
+      ['sound-design', 'music', 'Create or select music cues for emotional beats.'],
+      ['mix', 'mix', 'Assemble dialogue, ambience, Foley, SFX and music into a final audio timeline.']
     ]
   },
   'picture-story': {
@@ -37,9 +37,9 @@ const FORMAT_PIPELINES = {
       ['character-sheet', 'Create consistent character sheets, expressions and pose references.'],
       ['panel', 'Create comic panels that cover the required story beats.'],
       ['camera-motion', 'Animate panels with controlled pans, zooms, pushes and transitions.'],
-      ['dialogue', 'Create character dialogue and place dialogue balloons or subtitle timing.'],
+      ['voice', 'dialogue', 'Create character dialogue and place dialogue balloons or subtitle timing.'],
       ['sfx', 'Create impact and action sound effects synchronized to panel motion.'],
-      ['music', 'Create or select music cues.'],
+      ['sound-design', 'music', 'Create or select music cues.'],
       ['assembly', 'Assemble panels, motion, dialogue, captions and sound into the final video.']
     ]
   },
@@ -263,9 +263,9 @@ export function buildFormatProductionPlan(input = {}) {
   const visualTasks = beats.map((beat, index) => makeVisualTask(format.id, beat, index, input)).filter(Boolean);
   const audioTasks = makeAudioTasks(format.id, beats);
 
-  const stageTasks = pipeline.taskTemplates.map(([purpose, description], index) => ({
-    task_id: makeTaskId(pipeline.stages[index] || purpose, index),
-    stage: pipeline.stages[index] || purpose,
+  const stageTasks = pipeline.taskTemplates.map(([stage, purpose, description], index) => ({
+    task_id: makeTaskId(stage, index),
+    stage,
     domain: purpose === 'voice' || ['narration', 'dialogue', 'ambience', 'foley', 'sfx', 'music', 'mix'].includes(purpose) ? 'audio' : 'production',
     operation: purpose,
     purpose,
