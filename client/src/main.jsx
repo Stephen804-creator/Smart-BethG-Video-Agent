@@ -14,8 +14,10 @@ function App() {
   const [lighting, setLighting] = useState('natural cinematic');
   const [status, setStatus] = useState('Ready');
   const [result, setResult] = useState(null);
-  const [settings, setSettings] = useState({ hfSpace: 'Lightricks/ltx-video-distilled', hfToken: '', hasHFToken: false, lumaApiKey: '', hasLumaApiKey: false, lumaModel: 'ray-flash-2' });
   const [showSettings, setShowSettings] = useState(false);
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
+  const [showGenerationControls, setShowGenerationControls] = useState(false);
+  const [providers, setProviders] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [referenceGenerationId, setReferenceGenerationId] = useState(null);
   const [sequences, setSequences] = useState([]);
@@ -56,7 +58,7 @@ function App() {
   }
 
   useEffect(() => {
-    fetch(API + '/settings').then(r => r.json()).then(setSettings).catch(() => {});
+    fetch(API + '/providers?task=text-to-video&allowPaid=true').then(r => r.json()).then(data => setProviders(data.providers || [])).catch(() => {});
     loadSequences();
     loadFilmProjects();
     fetch(API + '/media-formats').then(r => r.json()).then(data => setMediaFormats(data.formats || [])).catch(() => {});
@@ -363,34 +365,38 @@ function App() {
     if (r.ok) setFilmProject(data.project);
   }
 
-  async function saveSettings() {
-    await fetch(API + '/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
-    setShowSettings(false);
-    setStatus('Settings saved');
-  }
-
   const activeSequence = sequences.find(item => item.id === sequenceId);
   const filmShots = filmProject?.shots || [];
   const filmTakes = filmProject?.takes || [];
   const selectedFilmShot = filmShots[0] || null;
   const isLuma = provider.startsWith('luma');
+  const selectedProviderInfo = providers.find(item => item.id === provider);
 
   return <div className="app">
     <header>
-      <div><div className="eyebrow">AI FILMMAKING</div><h1>Cinematic Agent</h1><p>Multiple engines. One director workspace.</p></div>
-      <div className="header-actions"><button className={filmMode ? 'camera-button active' : 'camera-button'} onClick={() => setFilmMode(!filmMode)} title="Normal film production mode"><span>🎥</span><b>Film Production</b></button><button className="ghost" onClick={() => setShowSettings(!showSettings)}>Settings</button></div>
+      <div><div className="eyebrow">AI FILMMAKING</div><h1>Cinematic Agent</h1><p>Describe what you want. The engine handles the production path.</p></div>
+      <div className="header-actions">
+        <button className={provider === 'auto' ? 'provider-chip active' : 'provider-chip'} onClick={() => setProvider(provider === 'auto' ? 'huggingface-ltx' : 'auto')} title="Automatic provider routing"><span>⚙</span><b>{provider === 'auto' ? 'Auto' : (selectedProviderInfo?.name || 'Provider')}</b></button>
+        <button className={showWorkspaceMenu ? 'menu-button active' : 'menu-button'} onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)} title="Open workspace tools"><span>☰</span></button>
+      </div>
     </header>
 
-    {showSettings && <section className="panel settings">
-      <h2>Provider connections</h2>
-      <label>Hugging Face Space<input value={settings.hfSpace} onChange={e => setSettings({ ...settings, hfSpace: e.target.value })}/></label>
-      <label>Hugging Face token<input type="password" value={settings.hfToken} onChange={e => setSettings({ ...settings, hfToken: e.target.value })} placeholder={settings.hasHFToken ? 'Token already saved' : 'hf_…'}/></label>
-      <label>Luma API key<input type="password" value={settings.lumaApiKey} onChange={e => setSettings({ ...settings, lumaApiKey: e.target.value })} placeholder={settings.hasLumaApiKey ? 'Key already saved' : 'luma_…'}/></label>
-      <label>Luma model<select value={settings.lumaModel || 'ray-flash-2'} onChange={e => setSettings({ ...settings, lumaModel: e.target.value })}><option value="ray-flash-2">Ray Flash 2</option><option value="ray-2">Ray 2</option></select></label>
-      <div className="row"><button onClick={saveSettings}>Save</button><span className="hint">Credentials stay on the backend settings file and are never returned to the browser.</span></div>
-    </section>}
+    {showWorkspaceMenu && <aside className="workspace-menu">
+      <div className="menu-title"><strong>Workspace</strong><span>Production tools</span></div>
+      <button onClick={() => { setFilmMode(true); setFilmTab('story'); setShowWorkspaceMenu(false); }}>📖 <span>Story & World</span></button>
+      <button onClick={() => { setFilmMode(true); setFilmTab('shots'); setShowWorkspaceMenu(false); }}>🎬 <span>Scenes & Shots</span></button>
+      <button onClick={() => { setFilmMode(true); setFilmTab('takes'); setShowWorkspaceMenu(false); }}>🎥 <span>Takes & Camera</span></button>
+      <button onClick={() => { setFilmMode(true); setFilmTab('continuity'); setShowWorkspaceMenu(false); }}>🔗 <span>Continuity</span></button>
+      <button onClick={() => { setFilmMode(true); setFilmTab('assets'); setShowWorkspaceMenu(false); }}>🗂️ <span>Media Assets</span></button>
+      <button onClick={() => { setFilmMode(true); setFilmTab('assistant'); setShowWorkspaceMenu(false); }}>✦ <span>AI Production Help</span></button>
+      <button onClick={() => { setFilmMode(false); setShowWorkspaceMenu(false); }}>⌂ <span>Generator</span></button>
+      <div className="menu-divider"/><button className="menu-settings" onClick={() => setShowSettings(!showSettings)}>⚙ <span>Appearance</span></button>
+      <small>Provider credentials and API secrets are not editable here. They belong in server-side environment configuration.</small>
+    </aside>}
 
-    <section className="panel dashboard-panel">
+    {showSettings && <section className="panel settings appearance-panel"><h2>Appearance</h2><p className="hint">Visual preferences will live here. Provider credentials remain server-side environment configuration and are never exposed as user-editable workspace fields.</p><label>Interface density<select defaultValue="comfortable"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></section>}
+
+    {showWorkspaceMenu && <section className="panel dashboard-panel">
       <div className="section-head">
         <div><div className="eyebrow">WORKSPACE</div><h2>Production dashboard</h2><span className="hint">Resume a project or continue a visual sequence without searching through the workspace.</span></div>
         <span className="tag">{filmProjects.length} projects · {sequences.length} sequences</span>
@@ -420,9 +426,9 @@ function App() {
           </div>
         </div>
       </div>
-    </section>
+    </section>}
 
-    <section className="panel sequence-panel">
+    {showWorkspaceMenu && <section className="panel sequence-panel">
       <div className="section-head">
         <div><h2>Film sequence</h2><span className="hint">Build the movie as ordered shots instead of isolated generations.</span></div>
         <span className="tag">{activeSequence ? `${activeSequence.shots.length} shots` : 'No sequence'}</span>
@@ -436,9 +442,9 @@ function App() {
         <button onClick={createSequence}>New sequence</button>
       </div>
       {activeSequence && <div className="sequence-track">{activeSequence.shots.length ? activeSequence.shots.map((shot, index) => <span key={shot}>Shot {index + 1}</span>) : <span className="hint">No shots yet. Generate the first shot below.</span>}</div>}
-    </section>
+    </section>}
 
-    {filmMode && <section className="panel film-assistant">
+    {showWorkspaceMenu && filmMode && <section className="panel film-assistant">
       <div className="section-head">
         <div><h2>🎥 Director Assistant</h2><span className="hint">Use normal filmmaking language. The agent turns your idea into scenes, shots, continuity and production tasks.</span></div>
         <span className="tag">FILM MODE</span>
@@ -672,25 +678,19 @@ function App() {
       <section className="panel composer">
         <div className="section-head"><h2>Generate a shot</h2><span className="status"><i className={generating ? 'busy' : ''}/> {status}</span></div>
         <label>Scene description<textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows="7" placeholder="Describe the shot you want to generate…"/></label>
-        <div className="grid3">
-          <label>Provider<select value={provider} onChange={e => setProvider(e.target.value)}>
-            <option value="huggingface-ltx">Hugging Face • LTX Video</option>
-            <option value="luma-ray-flash">Luma • Ray Flash 2</option>
-            <option value="luma-ray-2">Luma • Ray 2</option>
-            <option value="comfyui">ComfyUI • Wan/Hunyuan/LTX (next)</option>
-          </select></label>
+        <div className="search-toolbar">
+          <button type="button" className={showGenerationControls ? 'control-icon active' : 'control-icon'} onClick={() => setShowGenerationControls(!showGenerationControls)} title="Generation controls">☷</button>
+          <span className="control-summary">{duration}s · {ratio} · {framing}</span>
+          <div className="provider-dropdown"><span className="provider-icon">⚡</span><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Auto · route automatically</option>{providers.filter(p => p.id !== 'comfyui' || p.configured).map(p => <option key={p.id} value={p.id}>{p.name}{p.configured ? '' : ' · unavailable'}</option>)}</select></div>
+        </div>
+        {showGenerationControls && <div className="generation-controls-panel">
           <label>Duration<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value="2">2 seconds</option><option value="4">4 seconds</option><option value="6">6 seconds</option><option value="8">8 seconds</option></select></label>
           <label>Aspect ratio<select value={ratio} onChange={e => setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option><option>4:3</option><option>3:4</option><option>21:9</option></select></label>
-        </div>
-        {isLuma && <div className="hint provider-note">Luma generation runs independently from the Hugging Face ZeroGPU quota. Luma currently supports Ray 2 and Ray Flash 2 through its API.</div>}
-        <button type="button" className={showShotControls ? 'advanced-toggle open' : 'advanced-toggle'} onClick={() => setShowShotControls(!showShotControls)}>
-          <span><b>Camera & look</b><small>Framing, movement and lighting</small></span><span>{showShotControls ? '⌃' : '⌄'}</span>
-        </button>
-        {showShotControls && <div className="advanced-controls">
           <label>Framing<select value={framing} onChange={e => setFraming(e.target.value)}><option>wide shot</option><option>full body</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label>
           <label>Camera movement<select value={cameraMovement} onChange={e => setCameraMovement(e.target.value)}><option>static camera</option><option>slow push-in</option><option>slow pull-back</option><option>slow pan</option><option>slow tracking shot</option></select></label>
           <label>Lighting<select value={lighting} onChange={e => setLighting(e.target.value)}><option>natural cinematic</option><option>soft daylight</option><option>dramatic low light</option><option>night neon</option><option>warm sunset</option></select></label>
         </div>}
+        {isLuma && <div className="hint provider-note">Luma generation runs independently from the Hugging Face ZeroGPU quota. Luma currently supports Ray 2 and Ray Flash 2 through its API.</div>}
         {referenceGenerationId && <div className="hint">Continuity reference selected. LTX uses the previous video as a visual reference; other providers currently use continuity prompting until their native reference workflow is wired.</div>}
         <button className="generate" disabled={generating} onClick={generate}>{generating ? 'Generating…' : 'Generate cinematic shot'} <span>→</span></button>
       </section>
