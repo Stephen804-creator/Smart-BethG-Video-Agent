@@ -10,7 +10,9 @@ import { readSequences, createSequence, addShotToSequence } from './sequences.js
 import { generateWithLuma } from './luma.js';
 import { listProviders } from './router/provider-registry.js';
 import { chooseProvider } from './router/scorer.js';
-import { getComfyHealth } from './comfyui.js';\nimport { createComfyWorker } from './workers/comfyui-worker.js';\nimport { normalizeMediaTask, validateMediaTask } from './workers/media-task.js';
+import { getComfyHealth } from './comfyui.js';
+import { createComfyWorker } from './workers/comfyui-worker.js';
+import { normalizeMediaTask, validateMediaTask } from './workers/media-task.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -20,7 +22,8 @@ const settingsFile = path.join(root, 'server', 'settings.json');
 const outputDir = path.join(root, 'output');
 const dataDir = path.join(root, 'data');
 const generationsFile = path.join(dataDir, 'generations.jsonl');
-const sequencesFile = path.join(dataDir, 'sequences.json');\nconst comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
+const sequencesFile = path.join(dataDir, 'sequences.json');
+const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
@@ -48,7 +51,8 @@ function writeSettings(settings) {
 }
 
 function appendGeneration(record) {
-  fs.appendFileSync(generationsFile, JSON.stringify(record) + '\n');
+  fs.appendFileSync(generationsFile, JSON.stringify(record) + '
+');
 }
 
 function dimensionsForRatio(ratio) {
@@ -164,7 +168,30 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
 
-app.get('/api/workers', async (req, res) => {\n  const settings = readSettings();\n  const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });\n  res.json({ workers: [{ id: worker.id, runtime: worker.runtime, configured: worker.configured, health: worker.health, workflowPathConfigured: Boolean(comfyWorkflowPath) }] });\n});\n\napp.post('/api/media/generate', async (req, res) => {\n  try {\n    const task = normalizeMediaTask(req.body || {});\n    validateMediaTask(task);\n    if (req.body?.workerId && req.body.workerId !== 'comfyui-worker') return res.status(400).json({ error: 'Unknown worker.' });\n    const settings = readSettings();\n    const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });\n    const result = await worker.execute(task);\n    const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: result.output, promptId: result.promptId, source: result.source };\n    appendGeneration(record);\n    res.json({ status: 'Completed', videoUrl: result.output, generation: record });\n  } catch (error) {\n    console.error(error);\n    res.status(502).json({ error: 'Media generation failed.', detail: error?.message || 'Unknown worker error.' });\n  }\n});\n\napp.get('/api/providers', async (req, res) => {
+app.get('/api/workers', async (req, res) => {
+  const settings = readSettings();
+  const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
+  res.json({ workers: [{ id: worker.id, runtime: worker.runtime, configured: worker.configured, health: worker.health, workflowPathConfigured: Boolean(comfyWorkflowPath) }] });
+});
+
+app.post('/api/media/generate', async (req, res) => {
+  try {
+    const task = normalizeMediaTask(req.body || {});
+    validateMediaTask(task);
+    if (req.body?.workerId && req.body.workerId !== 'comfyui-worker') return res.status(400).json({ error: 'Unknown worker.' });
+    const settings = readSettings();
+    const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
+    const result = await worker.execute(task);
+    const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: result.output, promptId: result.promptId, source: result.source };
+    appendGeneration(record);
+    res.json({ status: 'Completed', videoUrl: result.output, generation: record });
+  } catch (error) {
+    console.error(error);
+    res.status(502).json({ error: 'Media generation failed.', detail: error?.message || 'Unknown worker error.' });
+  }
+});
+
+app.get('/api/providers', async (req, res) => {
   const settings = readSettings();
   const providers = listProviders(settings);
   const comfy = await getComfyHealth(settings.comfyUrl);
@@ -215,7 +242,8 @@ app.post('/api/settings', (req, res) => {
 
 app.get('/api/generations', (req, res) => {
   try {
-    const lines = fs.readFileSync(generationsFile, 'utf8').trim().split('\n').filter(Boolean);
+    const lines = fs.readFileSync(generationsFile, 'utf8').trim().split('
+').filter(Boolean);
     res.json({ records: lines.map(line => JSON.parse(line)).reverse() });
   } catch { res.json({ records: [] }); }
 });
@@ -249,7 +277,16 @@ app.post('/api/generate', async (req, res) => {
       return res.json(await generateLumaShot({ prompt: prompt.trim(), ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model }));
     }
 
-    if (provider === 'comfyui') {\n      const task = normalizeMediaTask({ operation: 'text-to-video', prompt: prompt.trim(), duration, aspectRatio: ratio, requirements: { duration, aspectRatio: ratio, quality: 'standard' }, metadata: { framing, cameraMovement, lighting } });\n      validateMediaTask(task);\n      const settings = readSettings();\n      const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });\n      const generated = await worker.execute(task);\n      const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: 'video', operation: task.operation, provider: 'comfyui', workerId: worker.id, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source };\n      appendGeneration(record);\n      return res.json({ provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record });\n    }
+    if (provider === 'comfyui') {
+      const task = normalizeMediaTask({ operation: 'text-to-video', prompt: prompt.trim(), duration, aspectRatio: ratio, requirements: { duration, aspectRatio: ratio, quality: 'standard' }, metadata: { framing, cameraMovement, lighting } });
+      validateMediaTask(task);
+      const settings = readSettings();
+      const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
+      const generated = await worker.execute(task);
+      const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: 'video', operation: task.operation, provider: 'comfyui', workerId: worker.id, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source };
+      appendGeneration(record);
+      return res.json({ provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record });
+    }
 
     return res.status(400).json({ error: 'Unknown provider.' });
   } catch (error) {
