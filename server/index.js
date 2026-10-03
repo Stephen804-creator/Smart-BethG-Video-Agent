@@ -16,7 +16,7 @@ import { createComfyWorker } from './workers/comfyui-worker.js';
 import { normalizeMediaTask, validateMediaTask } from './workers/media-task.js';
 import { prepareExecutionPlan } from './workers/execution-planner.js';
 import { createProductionRunner } from './orchestration/production-runner.js';
-import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains } from './knowledge/base.js';
+import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains, getKnowledgeForTask, validateKnowledgeReferences } from './knowledge/base.js';
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
 import { buildMediaPlan } from './planning/media-planner.js';
@@ -341,6 +341,25 @@ app.post('/api/projects/:projectId/entity-events', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error?.message || 'Could not save entity event.' });
   }
+});
+
+app.get('/api/knowledge/task', (req, res) => {
+  try {
+    const task = {
+      domain: req.query.domain || '',
+      operation: req.query.operation || '',
+      purpose: req.query.purpose || '',
+      prompt: req.query.prompt || '',
+      requirements: {}
+    };
+    res.json({ knowledge: getKnowledgeForTask(task, { limit: Number(req.query.limit || 8) }) });
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Could not retrieve task knowledge.' });
+  }
+});
+
+app.post('/api/knowledge/validate', (req, res) => {
+  res.json({ references: validateKnowledgeReferences(req.body?.knowledge_ids || req.body?.knowledgeRefs || []) });
 });
 
 app.get('/api/media-formats', (req, res) => {
