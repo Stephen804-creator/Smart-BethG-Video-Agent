@@ -183,6 +183,8 @@ export function createFilmStore(filePath) {
         description: String(input.description || ''),
         notes: String(input.notes || ''),
         status: String(input.status || 'planned'),
+        edit: input.edit && typeof input.edit === 'object' ? input.edit : { trimIn: 0, trimOut: 0, speed: 1, transition: 'cut', volume: 100 },
+        effects: input.effects && typeof input.effects === 'object' ? input.effects : { effect: 'none', intensity: 50, background: 'original', overlay: '', stabilization: false },
         selectedTakeId: null
       };
       p.shots.push(shot);
@@ -202,6 +204,8 @@ export function createFilmStore(filePath) {
         if (input[field] !== undefined) shot[field] = field === 'sceneId' ? (input[field] || null) : String(input[field] ?? '');
       }
       if (input.duration !== undefined) shot.duration = Number(input.duration || 0) || 0;
+      if (input.edit !== undefined && input.edit && typeof input.edit === 'object') shot.edit = { ...(shot.edit || {}), ...input.edit };
+      if (input.effects !== undefined && input.effects && typeof input.effects === 'object') shot.effects = { ...(shot.effects || {}), ...input.effects };
       if (input.sequence !== undefined) shot.sequence = normalizeSequence(input.sequence, shot.sequence);
       normalizeShotsForScene(p, oldSceneId);
       if (shot.sceneId !== oldSceneId) {
