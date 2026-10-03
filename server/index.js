@@ -16,6 +16,7 @@ import { createComfyWorker } from './workers/comfyui-worker.js';
 import { normalizeMediaTask, validateMediaTask } from './workers/media-task.js';
 import { prepareExecutionPlan } from './workers/execution-planner.js';
 import { createProductionRunner } from './orchestration/production-runner.js';
+import { createJobQueue } from './jobs/queue.js';
 import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains, getKnowledgeForTask, validateKnowledgeReferences } from './knowledge/base.js';
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
@@ -45,6 +46,7 @@ const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSi
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
 const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
+const generationQueue = createJobQueue({ concurrency: 1, maxQueue: 10 });
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
@@ -54,6 +56,12 @@ app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentia
 app.use(express.json({ limit: '2mb' }));
 app.use('/output', authMiddleware, express.static(outputDir));
 app.use('/assets', authMiddleware, express.static(assetDir));
+
+app.get('/api/jobs/:jobId', (req, res) => {
+  const job = generationQueue.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found.' });
+  res.json({ job });
+});
 
 app.get('/api/auth/status', (req, res) => res.json({ ...getPublicAuthStatus(), authenticated: isAuthenticated(req) }));
 app.post('/api/auth/login', authRateLimit, (req, res) => {
