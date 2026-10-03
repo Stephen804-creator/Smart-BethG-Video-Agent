@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -22,6 +23,7 @@ import { buildMediaPlan } from './planning/media-planner.js';
 import { buildFormatProductionPlan } from './planning/format-production-planner.js';
 import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
+import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
 
@@ -37,6 +39,9 @@ const datasetFile = path.join(dataDir, 'dataset-manifest.jsonl');
 const jobsFile = path.join(dataDir, 'production-jobs.jsonl');
 const sequencesFile = path.join(dataDir, 'sequences.json');
 const filmStore = createFilmStore(path.join(dataDir, 'film-projects.json'));
+const assetDir = path.join(dataDir, 'assets');
+const assetStore = createAssetStore({ rootDir: assetDir });
+const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSize: 500 * 1024 * 1024 } });
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -45,6 +50,7 @@ fs.mkdirSync(dataDir, { recursive: true });
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use('/output', express.static(outputDir));
+app.use('/assets', express.static(assetDir));
 
 function readSettings() {
   try {
@@ -225,6 +231,24 @@ app.post('/api/film/projects/:projectId/shots/:shotId/select-take', (req, res) =
   const project = filmStore.selectTake(req.params.projectId, req.params.shotId, req.body?.takeId);
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
   res.json({ project });
+});
+
+app.post('/api/film/projects/:projectId/assets/upload', upload.single('file'), (req, res) => {
+  try {
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Film project not found.' });
+    if (!req.file) return res.status(400).json({ error: 'A media file is required.' });
+    const stored = assetStore.saveUploadedFile(req.file);
+    const asset = filmStore.addAsset(req.params.projectId, {
+      ...stored,
+      sceneId: req.body?.sceneId || null,
+      shotId: req.body?.shotId || null,
+      notes: req.body?.notes || ''
+    });
+    res.status(201).json({ asset });
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Could not ingest media asset.' });
+  }
 });
 
 app.post('/api/film/projects/:projectId/assets', (req, res) => {
