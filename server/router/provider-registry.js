@@ -5,6 +5,7 @@ export const PROVIDERS = {
     type: 'cloud',
     model: 'LTX Video 0.9.8 13B Distilled',
     auth: 'hf-token',
+    pricing: 'free-quota',
     capabilities: {
       textToVideo: true,
       imageToVideo: true,
@@ -20,6 +21,7 @@ export const PROVIDERS = {
     type: 'cloud',
     model: 'ray-flash-2',
     auth: 'luma-api-key',
+    pricing: 'paid',
     capabilities: {
       textToVideo: true,
       imageToVideo: true,
@@ -35,6 +37,7 @@ export const PROVIDERS = {
     type: 'cloud',
     model: 'ray-2',
     auth: 'luma-api-key',
+    pricing: 'paid',
     capabilities: {
       textToVideo: true,
       imageToVideo: true,
@@ -50,6 +53,7 @@ export const PROVIDERS = {
     type: 'local-or-remote',
     model: 'workflow-defined',
     auth: 'endpoint',
+    pricing: 'user-controlled',
     capabilities: {
       textToVideo: false,
       imageToVideo: false,
@@ -57,18 +61,22 @@ export const PROVIDERS = {
       continuation: false,
       audio: false
     },
-    notes: 'Gateway slot for user-controlled workflows such as Wan or HunyuanVideo. Capability becomes available when a real workflow is configured.'
+    notes: 'Gateway slot for user-controlled workflows such as Wan. Capabilities stay disabled until a real workflow is installed and tested.'
   }
 };
 
 export function listProviders(settings) {
-  return Object.values(PROVIDERS).map(provider => ({
-    ...provider,
-    configured:
-      provider.auth === 'hf-token'
-        ? Boolean(settings?.hfToken || process.env.HF_TOKEN)
-        : provider.auth === 'luma-api-key'
-          ? Boolean(settings?.lumaApiKey || process.env.LUMAAI_API_KEY)
-          : Boolean(settings?.comfyUrl),
-  }));
+  return Object.values(PROVIDERS).map(provider => {
+    let configured = false;
+
+    if (provider.auth === 'hf-token') {
+      configured = Boolean(settings?.hfToken || process.env.HF_TOKEN);
+    } else if (provider.auth === 'luma-api-key') {
+      configured = Boolean(settings?.lumaApiKey || process.env.LUMAAI_API_KEY);
+    } else if (provider.auth === 'endpoint') {
+      configured = Boolean(settings?.comfyUrl);
+    }
+
+    return { ...provider, configured };
+  });
 }
