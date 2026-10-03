@@ -70,7 +70,7 @@ export function listProviders(settings) {
     let configured = false;
 
     if (provider.auth === 'hf-token') {
-      configured = Boolean(settings?.hfToken || process.env.HF_TOKEN);
+      configured = true;
     } else if (provider.auth === 'luma-api-key') {
       configured = Boolean(settings?.lumaApiKey || process.env.LUMAAI_API_KEY);
     } else if (provider.auth === 'endpoint') {
