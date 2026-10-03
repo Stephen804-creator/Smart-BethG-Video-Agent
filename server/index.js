@@ -366,6 +366,9 @@ app.post('/api/film/projects/:projectId/assistant', (req, res) => {
 
 app.get('/api/projects/:projectId/entities', async (req, res) => {
   try {
+    const database = await getDatabaseStatus();
+    if (!database.enabled) return res.status(503).json({ error: 'Entity storage is unavailable because the database is not configured.', database });
+    if (!database.connected) return res.status(503).json({ error: 'Entity storage is unavailable because the database is not connected.', database });
     const entities = await getEntityState(req.params.projectId, req.query.entityId || null);
     res.json({ entities });
   } catch (error) {
@@ -381,7 +384,12 @@ app.get('/api/projects/:projectId/entities/:entityId/state', async (req, res) =>
       req.query.sceneId || null,
       req.query.shotId || null
     );
-    if (!state) return res.status(404).json({ error: 'Entity not found.' });
+    if (!state) {
+      const database = await getDatabaseStatus();
+      if (!database.enabled) return res.status(503).json({ error: 'Entity state is unavailable because the database is not configured.', database });
+      if (!database.connected) return res.status(503).json({ error: 'Entity state is unavailable because the database is not connected.', database });
+      return res.status(404).json({ error: 'Entity not found.' });
+    }
     res.json(state);
   } catch (error) {
     res.status(500).json({ error: error?.message || 'Could not resolve entity state.' });
@@ -390,6 +398,9 @@ app.get('/api/projects/:projectId/entities/:entityId/state', async (req, res) =>
 
 app.post('/api/projects/:projectId/entities', async (req, res) => {
   try {
+    const database = await getDatabaseStatus();
+    if (!database.enabled) return res.status(503).json({ error: 'Entity storage is unavailable because the database is not configured.', database });
+    if (!database.connected) return res.status(503).json({ error: 'Entity storage is unavailable because the database is not connected.', database });
     const entities = Array.isArray(req.body?.entities) ? req.body.entities : [];
     await upsertWorldEntities(req.params.projectId, entities);
     res.json({ ok: true, count: entities.length });
@@ -400,6 +411,9 @@ app.post('/api/projects/:projectId/entities', async (req, res) => {
 
 app.post('/api/projects/:projectId/entity-events', async (req, res) => {
   try {
+    const database = await getDatabaseStatus();
+    if (!database.enabled) return res.status(503).json({ error: 'Entity event storage is unavailable because the database is not configured.', database });
+    if (!database.connected) return res.status(503).json({ error: 'Entity event storage is unavailable because the database is not connected.', database });
     await recordEntityEvent({
       projectId: req.params.projectId,
       sceneId: req.body?.sceneId,
@@ -564,10 +578,17 @@ app.post('/api/media/generate', async (req, res) => {
     const result = await worker.execute(task);
     const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, sound: task.sound, output: result.output, promptId: result.promptId, source: result.source };
     const datasetRecord = createDatasetRecord({ task, result, worker, soundPlan: task.sound, knowledgeRefs: task.metadata.knowledgeRefs || [] });
-    await saveGenerationToDatabase(datasetRecord);
     appendDatasetRecord(datasetFile, datasetRecord);
     appendGeneration(record);
-    res.json({ status: 'Completed', videoUrl: result.output, generation: record });
+    let database = { enabled: false, persisted: false };
+    try {
+      const persisted = await saveGenerationToDatabase(datasetRecord);
+      database = { enabled: Boolean(process.env.DATABASE_URL), persisted: Boolean(persisted) };
+    } catch (dbError) {
+      database = { enabled: true, persisted: false, detail: dbError?.message || 'Database write failed.' };
+      console.error('Generation saved locally; database write failed:', dbError);
+    }
+    res.json({ status: 'Completed', videoUrl: result.output, generation: record, database });
   } catch (error) {
     console.error(error);
     res.status(502).json({ error: 'Media generation failed.', detail: error?.message || 'Unknown worker error.' });
@@ -628,7 +649,7 @@ app.post('/api/settings', (req, res) => {
 
 app.get('/api/generations', (req, res) => {
   try {
-    const lines = fs.readFileSync(generationsFile, 'utf8').trim().split('\\n').filter(Boolean);
+    const lines = fs.readFileSync(generationsFile, 'utf8').trim().split('\n').filter(Boolean);
     res.json({ records: lines.map(line => JSON.parse(line)).reverse() });
   } catch { res.json({ records: [] }); }
 });
