@@ -1,5 +1,6 @@
 import { getMediaFormat } from '../media/formats.js';
 import { buildStoryPlan } from './story-planner.js';
+import { buildProductionGraph } from './production-graph.js';
 
 const FORMAT_PIPELINES = {
   'audio-story': {
@@ -306,6 +307,7 @@ export function buildFormatProductionPlan(input = {}) {
       visual: visualTasks,
       audio: audioTasks
     },
+    production_graph: productionGraph,
     continuity: {
       required: ['cinematic', 'anime', 'motion-comic'].includes(format.id),
       entities: storyPlan.world_bible || { characters: [], locations: [], props: [] },
