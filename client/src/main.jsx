@@ -58,7 +58,7 @@ function App() {
   const [loginError, setLoginError] = useState('');
 
   async function apiFetch(path, options = {}) {
-    const response = await apiFetch( path, { credentials: 'include', ...options });
+    const response = await fetch(API + path, { credentials: 'include', ...options });
     if (response.status === 401) {
       setAuthenticated(false);
       throw new Error('Authentication required.');
@@ -69,7 +69,7 @@ function App() {
   async function login() {
     setLoginError('');
     try {
-      const response = await apiFetch( '/auth/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: loginPassword }) });
+      const response = await fetch(API + '/auth/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: loginPassword }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Login failed.');
       setAuthenticated(true);
@@ -80,7 +80,7 @@ function App() {
   }
 
   async function logout() {
-    await apiFetch( '/auth/logout', { method: 'POST', credentials: 'include' });
+    await fetch(API + '/auth/logout', { method: 'POST', credentials: 'include' });
     setAuthenticated(false);
   }
 
@@ -94,7 +94,7 @@ function App() {
   }
 
   useEffect(() => {
-    apiFetch( '/auth/status', { credentials: 'include' }).then(r => r.json()).then(data => { setAuthenticated(Boolean(data.authenticated)); setAuthReady(true); }).catch(() => setAuthReady(true));
+    fetch(API + '/auth/status', { credentials: 'include' }).then(r => r.json()).then(data => { setAuthenticated(Boolean(data.authenticated)); setAuthReady(true); }).catch(() => setAuthReady(true));
   }, []);
 
   useEffect(() => {
