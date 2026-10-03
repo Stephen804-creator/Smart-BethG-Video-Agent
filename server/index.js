@@ -26,6 +26,7 @@ import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
+import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, setSessionCookie } from './security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -43,14 +44,32 @@ const assetDir = path.join(dataDir, 'assets');
 const assetStore = createAssetStore({ rootDir: assetDir });
 const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSize: 500 * 1024 * 1024 } });
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
+const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
+const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
-app.use(cors());
+const allowedOrigins = String(process.env.APP_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean);
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '2mb' }));
-app.use('/output', express.static(outputDir));
-app.use('/assets', express.static(assetDir));
+app.use('/output', authMiddleware, express.static(outputDir));
+app.use('/assets', authMiddleware, express.static(assetDir));
+
+app.get('/api/auth/status', (req, res) => res.json({ ...getPublicAuthStatus(), authenticated: isAuthenticated(req) }));
+app.post('/api/auth/login', authRateLimit, (req, res) => {
+  if (!process.env.APP_AUTH_PASSWORD) return res.status(503).json({ error: 'Authentication is not configured.' });
+  const supplied = String(req.body?.password || '');
+  const expected = String(process.env.APP_AUTH_PASSWORD);
+  if (supplied !== expected) return res.status(401).json({ error: 'Invalid password.' });
+  setSessionCookie(res);
+  res.json({ authenticated: true });
+});
+app.post('/api/auth/logout', (req, res) => { clearSessionCookie(res); res.json({ authenticated: false }); });
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth/')) return next();
+  return authMiddleware(req, res, next);
+});
 
 function readSettings() {
   try {
