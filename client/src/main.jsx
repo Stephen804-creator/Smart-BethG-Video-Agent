@@ -26,6 +26,10 @@ function App() {
   const [genre, setGenre] = useState('action');
   const [formatPlan, setFormatPlan] = useState(null);
   const [planning, setPlanning] = useState(false);
+  const [filmMode, setFilmMode] = useState(false);
+  const [filmIdea, setFilmIdea] = useState('');
+  const [filmAssist, setFilmAssist] = useState(null);
+  const [assisting, setAssisting] = useState(false);
 
   async function loadSequences() {
     try {
@@ -114,6 +118,28 @@ function App() {
     }
   }
 
+  async function askFilmAssistant() {
+    if (!filmIdea.trim() || assisting) return;
+    setAssisting(true);
+    setStatus('Director assistant is planning the film…');
+    try {
+      const r = await fetch(API + '/film/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story: filmIdea, title: newSequenceTitle || 'Untitled Film', genre, aspectRatio: ratio })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Film assistant failed.');
+      setFilmAssist(data);
+      setFormatPlan(data.production_plan);
+      setStatus('Film production plan ready');
+    } catch (e) {
+      setStatus(e.message || 'Assistant failed');
+    } finally {
+      setAssisting(false);
+    }
+  }
+
   async function saveSettings() {
     await fetch(API + '/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
     setShowSettings(false);
@@ -126,7 +152,7 @@ function App() {
   return <div className="app">
     <header>
       <div><div className="eyebrow">AI FILMMAKING</div><h1>Cinematic Agent</h1><p>Multiple engines. One director workspace.</p></div>
-      <button className="ghost" onClick={() => setShowSettings(!showSettings)}>Settings</button>
+      <div className="header-actions"><button className={filmMode ? 'camera-button active' : 'camera-button'} onClick={() => setFilmMode(!filmMode)} title="Normal film production mode"><span>🎥</span><b>Film Production</b></button><button className="ghost" onClick={() => setShowSettings(!showSettings)}>Settings</button></div>
     </header>
 
     {showSettings && <section className="panel settings">
@@ -152,6 +178,23 @@ function App() {
         <button onClick={createSequence}>New sequence</button>
       </div>
       {activeSequence && <div className="sequence-track">{activeSequence.shots.length ? activeSequence.shots.map((shot, index) => <span key={shot}>Shot {index + 1}</span>) : <span className="hint">No shots yet. Generate the first shot below.</span>}</div>}
+    </section>
+
+    {filmMode && <section className="panel film-assistant">
+      <div className="section-head">
+        <div><h2>🎥 Director Assistant</h2><span className="hint">Use normal filmmaking language. The agent turns your idea into scenes, shots, continuity and production tasks.</span></div>
+        <span className="tag">FILM MODE</span>
+      </div>
+      <label>What are you making?
+        <textarea value={filmIdea} onChange={e => setFilmIdea(e.target.value)} rows="5" placeholder="Example: A detective arrives at an abandoned railway station at night. He hears a child's voice, follows it into the control room and discovers that the station is still receiving a train that disappeared twenty years ago."/>
+      </label>
+      <div className="film-actions"><button onClick={askFilmAssistant} disabled={assisting || !filmIdea.trim()}>{assisting ? 'Planning the film…' : 'Ask the AI director assistant'} →</button><span className="hint">It plans first. Nothing is generated or paid for automatically.</span></div>
+      {filmAssist && <div className="assistant-result">
+        <strong>{filmAssist.story_plan?.project?.title || 'Film plan'}</strong>
+        <span>{filmAssist.story_plan?.scenes?.length || 0} scenes · {filmAssist.production_plan?.story?.beats?.length || 0} story beats · {filmAssist.production_plan?.tasks?.visual?.length || 0} visual tasks</span>
+        <p>{filmAssist.assistant?.message}</p>
+        <div className="checklist">{filmAssist.director_checklist?.map((item, i) => <span key={i}>✓ {item}</span>)}</div>
+      </div>}
     </section>
 
     <section className="panel format-panel">
