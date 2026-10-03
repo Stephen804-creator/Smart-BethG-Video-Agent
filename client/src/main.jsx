@@ -47,6 +47,9 @@ function App() {
   const [characterDraft, setCharacterDraft] = useState({ name: '', role: '', appearance: '', personality: '', description: '' });
   const [selectedSceneId, setSelectedSceneId] = useState('');
   const [sceneDraft, setSceneDraft] = useState({ title: '', location: '', timeOfDay: '', dramaticBeat: '', characters: '', blocking: '', action: '', dialogue: '', mood: '', weather: '', props: '', description: '' });
+  const [productionTool, setProductionTool] = useState('');
+  const [editDraft, setEditDraft] = useState({ shotId: '', trimIn: 0, trimOut: 0, speed: 1, transition: 'cut', volume: 100 });
+  const [effectDraft, setEffectDraft] = useState({ effect: 'none', intensity: 50, background: 'original', overlay: '', stabilization: false });
 
   async function loadSequences() {
     try {
@@ -483,6 +486,107 @@ function App() {
           <button className={filmTab === 'assets' ? 'active' : ''} onClick={() => setFilmTab('assets')}>Media Assets</button>
           <button className={filmTab === 'assistant' ? 'active' : ''} onClick={() => setFilmTab('assistant')}>AI Help</button>
         </div>
+
+        {(filmTab === 'shots' || filmTab === 'takes' || filmTab === 'assets') && <div className="production-tool-dock">
+          <div className="production-tool-heading">
+            <div><strong>Production tools</strong><span>Open only the tool group you need for the current shot or take.</span></div>
+            <button className="tool-collapse" onClick={() => setProductionTool('')}>Collapse</button>
+          </div>
+          <div className="production-tool-icons">
+            {[
+              ['shot','🎞️','Shot'],
+              ['camera','📷','Camera'],
+              ['edit','✂️','Edit'],
+              ['effects','✨','Effects'],
+              ['audio','🔊','Audio'],
+              ['layers','🖼️','Layers'],
+              ['timing','⏱️','Timing']
+            ].map(([id,icon,label]) => <button key={id} className={productionTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setProductionTool(productionTool === id ? '' : id)} title={label + ' tools'}><span>{icon}</span><small>{label}</small></button>)}
+          </div>
+
+          {productionTool === 'shot' && <div className="production-tool-panel">
+            <div className="tool-panel-head"><strong>Shot controls</strong><span>Build the next shot without filling the whole workspace.</span></div>
+            <div className="tool-control-grid">
+              <label>Framing<select value={shotDraft.framing} onChange={e => setShotDraft({...shotDraft,framing:e.target.value})}><option>wide shot</option><option>full shot</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label>
+              <label>Angle<select value={shotDraft.angle} onChange={e => setShotDraft({...shotDraft,angle:e.target.value})}><option>eye level</option><option>low angle</option><option>high angle</option><option>over the shoulder</option><option>POV</option></select></label>
+              <label>Movement<select value={shotDraft.movement} onChange={e => setShotDraft({...shotDraft,movement:e.target.value})}><option>static</option><option>pan</option><option>tilt</option><option>push-in</option><option>tracking</option><option>handheld</option></select></label>
+              <label>Lens<input value={shotDraft.lens} onChange={e => setShotDraft({...shotDraft,lens:e.target.value})}/></label>
+            </div>
+            <div className="tool-actions">
+              <button onClick={addFilmShot}>Add shot to production</button>
+              <button className="ghost" disabled={!result?.generation?.id} onClick={() => { if (result?.generation?.id) { setReferenceGenerationId(result.generation.id); setPrompt(prompt + ' Continue from the selected shot, preserving character, location and visual identity.'); setStatus('Current result set as the next-shot reference'); } }}>Use current result as next shot</button>
+            </div>
+          </div>}
+
+          {productionTool === 'camera' && <div className="production-tool-panel">
+            <div className="tool-panel-head"><strong>Camera & capture</strong><span>Record the physical camera settings for the selected take.</span></div>
+            <div className="tool-control-grid">
+              <label>Camera<input value={takeDraft.camera} onChange={e => setTakeDraft({...takeDraft,camera:e.target.value})} placeholder="Camera body"/></label>
+              <label>Lens<input value={takeDraft.lens} onChange={e => setTakeDraft({...takeDraft,lens:e.target.value})}/></label>
+              <label>FPS<input type="number" value={takeDraft.fps} onChange={e => setTakeDraft({...takeDraft,fps:Number(e.target.value)})}/></label>
+              <label>Shutter<input value={takeDraft.shutter} onChange={e => setTakeDraft({...takeDraft,shutter:e.target.value})}/></label>
+              <label>ISO<input value={takeDraft.iso} onChange={e => setTakeDraft({...takeDraft,iso:e.target.value})}/></label>
+              <label>White balance<input value={takeDraft.whiteBalance} onChange={e => setTakeDraft({...takeDraft,whiteBalance:e.target.value})}/></label>
+            </div>
+            <div className="tool-actions"><button disabled={!takeDraft.shotId} onClick={() => addFilmTake(takeDraft.shotId)}>Save camera take</button><span className="hint">Choose “Log take” below to attach these settings to a specific shot.</span></div>
+          </div>}
+
+          {productionTool === 'edit' && <div className="production-tool-panel">
+            <div className="tool-panel-head"><strong>Edit this shot</strong><span>Set editorial instructions for the selected take.</span></div>
+            <div className="tool-control-grid">
+              <label>Shot<select value={editDraft.shotId} onChange={e => setEditDraft({...editDraft,shotId:e.target.value})}><option value="">Choose shot</option>{filmShots.map(s => <option key={s.id} value={s.id}>Shot {s.number}</option>)}</select></label>
+              <label>Trim in (sec)<input type="number" min="0" step="0.1" value={editDraft.trimIn} onChange={e => setEditDraft({...editDraft,trimIn:Number(e.target.value)})}/></label>
+              <label>Trim out (sec)<input type="number" min="0" step="0.1" value={editDraft.trimOut} onChange={e => setEditDraft({...editDraft,trimOut:Number(e.target.value)})}/></label>
+              <label>Speed<select value={editDraft.speed} onChange={e => setEditDraft({...editDraft,speed:Number(e.target.value)})}><option value="0.5">0.5× slow</option><option value="1">1× normal</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
+              <label>Transition<select value={editDraft.transition} onChange={e => setEditDraft({...editDraft,transition:e.target.value})}><option>cut</option><option>cross dissolve</option><option>fade</option><option>dip to black</option><option>match cut</option></select></label>
+              <label>Volume %<input type="number" min="0" max="200" value={editDraft.volume} onChange={e => setEditDraft({...editDraft,volume:Number(e.target.value)})}/></label>
+            </div>
+            <div className="tool-note">These are edit instructions for the shot. The actual media render/export layer will apply them once the editing engine is connected.</div>
+          </div>}
+
+          {productionTool === 'effects' && <div className="production-tool-panel">
+            <div className="tool-panel-head"><strong>Effects & look</strong><span>Prepare visual treatment without crowding the shot builder.</span></div>
+            <div className="tool-control-grid">
+              <label>Effect<select value={effectDraft.effect} onChange={e => setEffectDraft({...effectDraft,effect:e.target.value})}><option>none</option><option>film grain</option><option>soft glow</option><option>motion blur</option><option>vignette</option><option>black and white</option><option>cinematic contrast</option></select></label>
+              <label>Intensity %<input type="number" min="0" max="100" value={effectDraft.intensity} onChange={e => setEffectDraft({...effectDraft,intensity:Number(e.target.value)})}/></label>
+              <label>Background<select value={effectDraft.background} onChange={e => setEffectDraft({...effectDraft,background:e.target.value})}><option>original</option><option>replace</option><option>remove</option><option>blur</option></select></label>
+              <label>Overlay<input value={effectDraft.overlay} onChange={e => setEffectDraft({...effectDraft,overlay:e.target.value})} placeholder="Optional visual layer"/></label>
+            </div>
+            <label className="tool-check"><input type="checkbox" checked={effectDraft.stabilization} onChange={e => setEffectDraft({...effectDraft,stabilization:e.target.checked})}/> Stabilize camera movement</label>
+          </div>}
+
+          {productionTool === 'audio' && <div className="production-tool-panel">
+            <div className="tool-panel-head"><strong>Audio</strong><span>Keep dialogue, ambience, music and SFX controls close to the shot.</span></div>
+            <div className="tool-control-grid">
+              <label>Dialogue volume %<input type="number" min="0" max="200" defaultValue="100"/></label>
+              <label>Music volume %<input type="number" min="0" max="200" defaultValue="70"/></label>
+              <label>SFX volume %<input type="number" min="0" max="200" defaultValue="100"/></label>
+              <label>Ambience volume %<input type="number" min="0" max="200" defaultValue="80"/></label>
+            </div>
+            <div className="tool-actions"><button className="ghost" onClick={() => setStatus('Audio mix instructions prepared for this shot')}>Prepare audio mix</button></div>
+          </div>}
+
+          {productionTool === 'layers' && <div className="production-tool-panel">
+            <div className="tool-panel-head"><strong>Background & layers</strong><span>Think in editable layers: base video, background, foreground, text and overlays.</span></div>
+            <div className="tool-layer-list">
+              <button className="tool-layer active">🎞️ Base shot <span>Primary video</span></button>
+              <button className="tool-layer">🖼️ Background <span>Replace / remove / blur</span></button>
+              <button className="tool-layer">✨ Foreground effect <span>VFX / atmosphere</span></button>
+              <button className="tool-layer">🔤 Text / title <span>Optional overlay</span></button>
+              <button className="tool-layer">🎵 Audio bed <span>Music / ambience / SFX</span></button>
+            </div>
+          </div>}
+
+          {productionTool === 'timing' && <div className="production-tool-panel">
+            <div className="tool-panel-head"><strong>Timing & sequence</strong><span>Control how this shot connects to the next shot.</span></div>
+            <div className="tool-control-grid">
+              <label>Shot duration sec<input type="number" min="0.1" step="0.1" value={duration} onChange={e => setDuration(Number(e.target.value))}/></label>
+              <label>Transition<select value={editDraft.transition} onChange={e => setEditDraft({...editDraft,transition:e.target.value})}><option>cut</option><option>cross dissolve</option><option>fade</option><option>dip to black</option><option>match cut</option></select></label>
+              <label>Next-shot action<select defaultValue="continue"><option value="continue">Continue scene</option><option value="reaction">Reaction shot</option><option value="insert">Insert / detail</option><option value="wide">Return to wide</option><option value="new-scene">New scene</option></select></label>
+            </div>
+            <div className="tool-actions"><button className="ghost" disabled={!result?.generation?.id} onClick={() => { if (result?.generation?.id) { setReferenceGenerationId(result.generation.id); setStatus('Next shot will use this result as its visual reference'); } }}>Carry current shot into next shot</button></div>
+          </div>}
+        </div>}
 
         {filmTab === 'story' && <div className="story-workspace">
           <div className="story-column">
