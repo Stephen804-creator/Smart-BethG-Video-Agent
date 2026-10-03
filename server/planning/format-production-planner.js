@@ -274,6 +274,14 @@ export function buildFormatProductionPlan(input = {}) {
     status: 'planned'
   }));
 
+  const productionGraph = buildProductionGraph({
+    format: format.id,
+    storyPlan,
+    pipelineTasks: stageTasks,
+    visualTasks,
+    audioTasks
+  });
+
   return {
     schema_version: 'format-production-plan-v1',
     plan_id: `format-plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
