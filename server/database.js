@@ -218,12 +218,35 @@ export async function resolveEntityStateAt(projectId, entityId, sceneId = null, 
     [projectId, entityId]
   );
 
+  const naturalKey = (value) => String(value || '').split(/(\d+)/).map(part => /^\d+$/.test(part) ? Number(part) : part.toLowerCase());
+  const compareNatural = (a, b) => {
+    const aa = naturalKey(a);
+    const bb = naturalKey(b);
+    for (let i = 0; i < Math.max(aa.length, bb.length); i += 1) {
+      if (aa[i] === undefined) return -1;
+      if (bb[i] === undefined) return 1;
+      if (typeof aa[i] === 'number' && typeof bb[i] === 'number') {
+        if (aa[i] !== bb[i]) return aa[i] - bb[i];
+      } else if (String(aa[i]) !== String(bb[i])) {
+        return String(aa[i]).localeCompare(String(bb[i]));
+      }
+    }
+    return 0;
+  };
+  const targetScene = sceneId ? String(sceneId) : null;
+  const targetShot = shotId ? String(shotId) : null;
+  const orderedEvents = [...events.rows].sort((a, b) => {
+    const sceneCompare = compareNatural(a.scene_id || '', b.scene_id || '');
+    if (sceneCompare !== 0) return sceneCompare;
+    const shotCompare = compareNatural(a.shot_id || '', b.shot_id || '');
+    if (shotCompare !== 0) return shotCompare;
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  });
   const state = { ...(entity.rows[0].state || {}) };
   const history = [];
-
-  for (const event of events.rows) {
-    if (sceneId && event.scene_id && String(event.scene_id) > String(sceneId)) break;
-    if (shotId && event.scene_id === sceneId && event.shot_id && String(event.shot_id) > String(shotId)) break;
+  for (const event of orderedEvents) {
+    if (targetScene && event.scene_id && compareNatural(event.scene_id, targetScene) > 0) break;
+    if (targetShot && event.scene_id === targetScene && event.shot_id && compareNatural(event.shot_id, targetShot) > 0) break;
     Object.assign(state, event.changes || {});
     history.push(event);
   }
