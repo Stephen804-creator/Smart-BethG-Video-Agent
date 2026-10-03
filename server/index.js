@@ -838,7 +838,7 @@ if (fs.existsSync(clientDist)) {
   });
 }
 
-try { assertAuthConfigured(); } catch (error) { console.error(error.message); if (process.env.NODE_ENV === 'production') process.exitCode = 1; }
+try { assertAuthConfigured(); } catch (error) { console.error(error.message); if (process.env.NODE_ENV === 'production') process.exit(1); }
 
 initDatabase().then(() => {
   app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
