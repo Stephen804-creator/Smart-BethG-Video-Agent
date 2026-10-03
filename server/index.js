@@ -258,8 +258,7 @@ app.post('/api/settings', (req, res) => {
 
 app.get('/api/generations', (req, res) => {
   try {
-    const lines = fs.readFileSync(generationsFile, 'utf8').trim().split('
-').filter(Boolean);
+    const lines = fs.readFileSync(generationsFile, 'utf8').trim().split('\\n').filter(Boolean);
     res.json({ records: lines.map(line => JSON.parse(line)).reverse() });
   } catch { res.json({ records: [] }); }
 });
