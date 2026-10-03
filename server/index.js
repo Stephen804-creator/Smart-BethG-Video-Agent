@@ -208,6 +208,30 @@ app.patch('/api/film/projects/:projectId', (req, res) => {
   res.json({ project });
 });
 
+app.patch('/api/film/projects/:projectId/story', (req, res) => {
+  const project = filmStore.updateStory(req.params.projectId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.json({ project });
+});
+
+app.post('/api/film/projects/:projectId/characters', (req, res) => {
+  const project = filmStore.addCharacter(req.params.projectId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.status(201).json({ project });
+});
+
+app.patch('/api/film/projects/:projectId/characters/:characterId', (req, res) => {
+  const project = filmStore.updateCharacter(req.params.projectId, req.params.characterId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project or character not found.' });
+  res.json({ project });
+});
+
+app.patch('/api/film/projects/:projectId/world', (req, res) => {
+  const project = filmStore.updateWorld(req.params.projectId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  res.json({ project });
+});
+
 app.post('/api/film/projects/:projectId/scenes', (req, res) => {
   const project = filmStore.addScene(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
