@@ -23,6 +23,30 @@ function extractNamedEntities(text) {
     props.add(match[1].trim());
   }
 
+  const entityState = [
+    ...characters.map((character, index) => ({
+      id: `${input.projectId || 'project'}-character-${index + 1}`,
+      type: 'character',
+      name: character.name,
+      state: character.state || {},
+      continuity: character.continuity || {}
+    })),
+    ...locations.map((name, index) => ({
+      id: `${input.projectId || 'project'}-location-${index + 1}`,
+      type: 'location',
+      name,
+      state: {},
+      continuity: {}
+    })),
+    ...props.map((name, index) => ({
+      id: `${input.projectId || 'project'}-prop-${index + 1}`,
+      type: 'prop',
+      name,
+      state: {},
+      continuity: {}
+    }))
+  ];
+
   return {
     characters: [...characters],
     locations: [...locations],
@@ -128,6 +152,7 @@ export function buildStoryPlan(input = {}) {
       premise: story,
       beats
     },
+    entity_state: entityState,
     world_bible: {
       characters,
       locations: locations.map(name => ({ name, continuity_notes: '' })),
