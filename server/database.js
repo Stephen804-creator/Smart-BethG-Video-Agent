@@ -6,9 +6,17 @@ let pool = null;
 function getPool() {
   if (!process.env.DATABASE_URL) return null;
   if (!pool) {
+    const ca = process.env.DATABASE_SSL_CA || undefined;
+    const ssl = process.env.DATABASE_SSL === 'false'
+      ? false
+      : { rejectUnauthorized: true, ...(ca ? { ca } : {}) };
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
+      ssl,
+      connectionTimeoutMillis: 5000,
+      query_timeout: 15000,
+      statement_timeout: 15000,
+      application_name: 'cinematic-agent'
     });
   }
   return pool;
