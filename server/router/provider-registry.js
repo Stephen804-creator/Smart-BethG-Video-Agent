@@ -55,10 +55,10 @@ export const PROVIDERS = {
     auth: 'endpoint',
     pricing: 'user-controlled',
     capabilities: {
-      textToVideo: false,
-      imageToVideo: false,
-      videoToVideo: false,
-      continuation: false,
+      textToVideo: true,
+      imageToVideo: true,
+      videoToVideo: true,
+      continuation: true,
       audio: false
     },
     notes: 'Gateway slot for user-controlled workflows such as Wan. Capabilities stay disabled until a real workflow is installed and tested.'
