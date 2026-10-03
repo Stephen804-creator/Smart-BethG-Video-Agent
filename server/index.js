@@ -221,6 +221,24 @@ app.post('/api/film/projects/:projectId/shots', (req, res) => {
   res.status(201).json({ project });
 });
 
+app.patch('/api/film/projects/:projectId/shots/:shotId', (req, res) => {
+  const project = filmStore.updateShot(req.params.projectId, req.params.shotId, req.body || {});
+  if (!project) return res.status(404).json({ error: 'Film project or shot not found.' });
+  res.json({ project });
+});
+
+app.post('/api/film/projects/:projectId/scenes/:sceneId/reorder', (req, res) => {
+  const project = filmStore.reorderScene(req.params.projectId, req.params.sceneId, req.body?.sequence);
+  if (!project) return res.status(404).json({ error: 'Film project or scene not found.' });
+  res.json({ project });
+});
+
+app.post('/api/film/projects/:projectId/shots/:shotId/reorder', (req, res) => {
+  const project = filmStore.reorderShot(req.params.projectId, req.params.shotId, req.body?.sequence);
+  if (!project) return res.status(404).json({ error: 'Film project or shot not found.' });
+  res.json({ project });
+});
+
 app.post('/api/film/projects/:projectId/takes', (req, res) => {
   const take = filmStore.addTake(req.params.projectId, req.body || {});
   if (!take) return res.status(404).json({ error: 'Film project not found.' });
