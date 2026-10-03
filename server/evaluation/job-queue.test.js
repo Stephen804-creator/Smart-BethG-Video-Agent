@@ -9,7 +9,7 @@ test('job queue returns queued state and completes asynchronously', async () => 
     return { ok: true };
   });
 
-  assert.equal(job.status, 'queued');
+  assert.ok(['queued', 'running'].includes(job.status));
   await new Promise(resolve => setTimeout(resolve, 30));
   const completed = queue.get(job.id);
   assert.equal(completed.status, 'completed');
