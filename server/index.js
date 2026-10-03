@@ -20,6 +20,7 @@ import { createJobQueue } from './jobs/queue.js';
 import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains, getKnowledgeForTask, validateKnowledgeReferences } from './knowledge/base.js';
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
+import { evaluateVideoFile } from './evaluation/video-qc.js';
 import { buildMediaPlan } from './planning/media-planner.js';
 import { buildFormatProductionPlan } from './planning/format-production-planner.js';
 import { buildStoryPlan } from './planning/story-planner.js';
@@ -121,6 +122,42 @@ function probeDuration(filepath) {
   });
 }
 
+async function finalizeGeneratedMedia({ record, task, result, worker }) {
+  const relative = String(record.output || '').replace(/^\/output\//, '');
+  const filePath = path.join(outputDir, path.basename(relative));
+  let evaluation = {};
+  try {
+    evaluation = await evaluateVideoFile(filePath, {
+      requestedDuration: task.requirements?.duration || null,
+      frameOutputRoot: path.join(dataDir, 'evaluation-frames')
+    });
+  } catch (error) {
+    evaluation = { decision: 'UNAVAILABLE', findings: [{ severity: 'REVIEW', code: 'QC_UNAVAILABLE', message: error?.message || 'Quality control unavailable.' }] };
+  }
+
+  record.qualityControl = evaluation;
+  const datasetRecord = createDatasetRecord({
+    task,
+    result: { ...result, output: record.output, generationId: record.id },
+    worker,
+    evaluation,
+    soundPlan: task.sound || null,
+    knowledgeRefs: task.metadata?.knowledgeRefs || []
+  });
+  appendDatasetRecord(datasetFile, datasetRecord);
+
+  let database = { enabled: false, persisted: false };
+  try {
+    const persisted = await saveGenerationToDatabase(datasetRecord);
+    database = { enabled: Boolean(process.env.DATABASE_URL), persisted: Boolean(persisted) };
+  } catch (error) {
+    database = { enabled: true, persisted: false, detail: error?.message || 'Database write failed.' };
+    console.error('Generation artifact persisted locally; database write failed:', error);
+  }
+
+  return { evaluation, database, datasetRecordId: datasetRecord.dataset_id };
+}
+
 function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
   const controls = [
     `Framing: ${framing || 'medium shot'}.`,
@@ -189,8 +226,18 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
   const actualDuration = await probeDuration(filepath);
   const record = { id, createdAt: new Date().toISOString(), provider: 'huggingface', space, model: 'LTX Video 0.9.8 13B Distilled', mode, prompt, generatedPrompt: shotPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: Number(duration), duration: actualDuration ?? Number(duration), durationMeasured: actualDuration !== null, ratio, height: dimensions.height, width: dimensions.width, seed, output: `/output/${filename}` };
+  const task = normalizeMediaTask({
+    operation: mode === 'video-to-video' ? 'video-to-video' : 'text-to-video',
+    prompt,
+    duration: Number(duration),
+    aspectRatio: ratio,
+    requirements: { duration: Number(duration), aspectRatio: ratio, width: dimensions.width, height: dimensions.height, quality: 'standard' },
+    continuity: { referenceGenerationId: reference?.id || null },
+    metadata: { framing, cameraMovement, lighting, model: record.model }
+  });
+  const qualityControl = await finalizeGeneratedMedia({ record, task, result: { generationId: record.id }, worker: { id: 'huggingface-ltx', provider: 'huggingface', runtime: 'gradio-space' } });
   appendGeneration(record);
-  return { provider: 'Hugging Face • LTX Video', status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
+  return { provider: 'Hugging Face • LTX Video', status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
 async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model }) {
@@ -207,8 +254,17 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
   const actualDuration = await probeDuration(filepath);
   const record = { id, createdAt: new Date().toISOString(), provider: 'luma', model: generation.model || model, mode: 'text-to-video', prompt, generatedPrompt: finalPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: null, duration: actualDuration, durationMeasured: actualDuration !== null, ratio, width: null, height: null, providerGenerationId: generation.id, output: `/output/${filename}` };
+  const task = normalizeMediaTask({
+    operation: 'text-to-video',
+    prompt,
+    duration: actualDuration || 5,
+    aspectRatio: ratio,
+    requirements: { duration: actualDuration || 5, aspectRatio: ratio, quality: 'standard' },
+    metadata: { framing, cameraMovement, lighting, model: record.model }
+  });
+  const qualityControl = await finalizeGeneratedMedia({ record, task, result: { generationId: record.providerGenerationId }, worker: { id: 'luma-api', provider: 'luma', runtime: 'luma-api' } });
   appendGeneration(record);
-  return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
+  return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
 app.get('/api/film/projects', (req, res) => {
