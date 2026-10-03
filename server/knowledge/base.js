@@ -108,7 +108,7 @@ const KNOWLEDGE = [
 ];
 
 export function searchKnowledge(query = '', domain = '') {
-  const terms = String(query).toLowerCase().split(/\\s+/).filter(Boolean);
+  const terms = String(query).toLowerCase().split(/\s+/).filter(Boolean);
   return KNOWLEDGE
     .filter(item => !domain || item.domain === domain)
     .map(item => {
