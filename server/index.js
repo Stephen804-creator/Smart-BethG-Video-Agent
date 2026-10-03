@@ -17,6 +17,7 @@ import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains } from './know
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
 import { buildMediaPlan } from './planning/media-planner.js';
+import { buildStoryPlan } from './planning/story-planner.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus } from './database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -173,6 +174,11 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   appendGeneration(record);
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
+
+app.post('/api/story/plan', (req, res) => {
+  try { res.json(buildStoryPlan(req.body || {})); }
+  catch (error) { res.status(400).json({ error: error?.message || 'Could not build story plan.' }); }
+});
 
 app.post('/api/media/plan', (req, res) => {
   try { res.json(buildMediaPlan(req.body || {})); }
