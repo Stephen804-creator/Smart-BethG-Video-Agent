@@ -18,7 +18,7 @@ import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
 import { buildMediaPlan } from './planning/media-planner.js';
 import { buildStoryPlan } from './planning/story-planner.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -174,6 +174,30 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   appendGeneration(record);
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record };
 }
+
+app.get('/api/projects/:projectId/entities', async (req, res) => {
+  try {
+    const entities = await getEntityState(req.params.projectId, req.query.entityId || null);
+    res.json({ entities });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Could not resolve entities.' });
+  }
+});
+
+app.get('/api/projects/:projectId/entities/:entityId/state', async (req, res) => {
+  try {
+    const state = await resolveEntityStateAt(
+      req.params.projectId,
+      req.params.entityId,
+      req.query.sceneId || null,
+      req.query.shotId || null
+    );
+    if (!state) return res.status(404).json({ error: 'Entity not found.' });
+    res.json(state);
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Could not resolve entity state.' });
+  }
+});
 
 app.post('/api/projects/:projectId/entities', async (req, res) => {
   try {
