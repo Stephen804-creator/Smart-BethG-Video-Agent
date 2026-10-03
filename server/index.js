@@ -13,6 +13,7 @@ import { chooseProvider } from './router/scorer.js';
 import { getComfyHealth } from './comfyui.js';
 import { createComfyWorker } from './workers/comfyui-worker.js';
 import { normalizeMediaTask, validateMediaTask } from './workers/media-task.js';
+import { prepareExecutionPlan } from './workers/execution-planner.js';
 import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains } from './knowledge/base.js';
 import { normalizeSoundPlan } from './sound/schema.js';
 import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
@@ -246,6 +247,15 @@ app.post('/api/media/plan', (req, res) => {
 app.post('/api/media/format-plan', (req, res) => {
   try { res.json(buildFormatProductionPlan(req.body || {})); }
   catch (error) { res.status(400).json({ error: error?.message || 'Could not build format production plan.' }); }
+});
+
+app.post('/api/media/execution-plan', (req, res) => {
+  try {
+    const graph = req.body?.productionGraph || req.body?.production_graph || req.body;
+    res.json(prepareExecutionPlan(graph || {}));
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Could not prepare execution plan.' });
+  }
 });
 
 app.get('/api/knowledge', (req, res) => {
