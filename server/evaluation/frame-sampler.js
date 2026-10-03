@@ -52,14 +52,15 @@ export async function sampleVideoFrames(filePath, options = {}) {
 
   const frames = [];
   for (let i = 0; i < count; i += 1) {
-    const timestamp = count === 1 ? duration / 2 : (duration * i) / (count - 1);
-    const safeTime = Math.min(Math.max(timestamp, 0), Math.max(duration - 0.001, 0));
+    const timestamp = count === 1 ? duration / 2 : (duration * (i + 0.5)) / count;
+    const safeTime = Math.min(Math.max(timestamp, 0), Math.max(duration / 2, 0));
     const outputPath = path.join(outputDir, `frame-${String(i + 1).padStart(2, '0')}.jpg`);
     await runCommand('ffmpeg', [
       '-hide_banner', '-loglevel', 'error',
       '-ss', safeTime.toFixed(3), '-i', filePath,
       '-frames:v', '1', '-q:v', '2', '-y', outputPath
     ], { timeoutMs: 120000 });
+    if (!fs.existsSync(outputPath)) throw new Error(`FFmpeg did not produce sampled frame ${path.basename(outputPath)}.`);
     const stat = fs.statSync(outputPath);
     frames.push({
       index: i,
