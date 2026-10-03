@@ -35,3 +35,18 @@
 .dashboard-item>span:last-child{color:#8ab4ff;font-size:14px}
 @media(max-width:900px){.dashboard-grid{grid-template-columns:1fr 1fr}.dashboard-new{grid-column:1/-1}}
 @media(max-width:600px){.dashboard-grid{grid-template-columns:1fr}.dashboard-new{grid-column:auto}}
+
+
+/* Story and world workspace */
+.story-workspace{display:grid;grid-template-columns:1.2fr 1fr;gap:18px}
+.story-column{display:grid;gap:10px}
+.story-column textarea{min-height:0}
+.character-head{margin-top:7px}
+.character-form{display:grid;gap:8px;padding:13px;background:#0b0f14;border:1px solid #293039;border-radius:12px}
+.wide-field{grid-column:span 2}
+.character-list{display:grid;gap:7px}
+.character-card{display:grid;gap:4px;padding:11px;border:1px solid #293039;border-radius:10px;background:#0b0f14}
+.character-card b{font-size:12px;color:#e2e8ed}
+.character-card span{font-size:10px;color:#9ba5af}
+.character-card small{font-size:10px;color:#727d87;line-height:1.4}
+@media(max-width:800px){.story-workspace{grid-template-columns:1fr}.wide-field{grid-column:auto}}
