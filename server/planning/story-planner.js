@@ -6,7 +6,7 @@ function id(prefix, index) {
   return `${prefix}-${String(index + 1).padStart(3, '0')}`;
 }
 
-function extractNamedEntities(text) {
+function extractNamedEntities(text, projectId = 'project') {
   const characters = new Set();
   const locations = new Set();
   const props = new Set();
@@ -25,21 +25,21 @@ function extractNamedEntities(text) {
 
   const entityState = [
     ...characters.map((character, index) => ({
-      id: `${input.projectId || 'project'}-character-${index + 1}`,
+      id: `${projectId}-character-${index + 1}`,
       type: 'character',
       name: character.name,
       state: character.state || {},
       continuity: character.continuity || {}
     })),
     ...locations.map((name, index) => ({
-      id: `${input.projectId || 'project'}-location-${index + 1}`,
+      id: `${projectId}-location-${index + 1}`,
       type: 'location',
       name,
       state: {},
       continuity: {}
     })),
     ...props.map((name, index) => ({
-      id: `${input.projectId || 'project'}-prop-${index + 1}`,
+      id: `${projectId}-prop-${index + 1}`,
       type: 'prop',
       name,
       state: {},
@@ -88,7 +88,8 @@ export function buildStoryPlan(input = {}) {
   const suppliedCharacters = Array.isArray(input.characters) ? input.characters : [];
   const suppliedLocations = Array.isArray(input.locations) ? input.locations : [];
   const suppliedProps = Array.isArray(input.props) ? input.props : [];
-  const inferred = extractNamedEntities(story);
+  const projectId = input.projectId || `project-${Date.now()}`;
+  const inferred = extractNamedEntities(story, projectId);
 
   const characters = [...new Map(
     [...suppliedCharacters.map(x => typeof x === 'string' ? { name: x } : x), ...inferred.characters.map(name => ({ name }))].map(x => [x.name, x])
@@ -141,7 +142,7 @@ export function buildStoryPlan(input = {}) {
   return {
     schema_version: 'story-plan-v1',
     project: {
-      id: input.projectId || `project-${Date.now()}`,
+      id: projectId,
       title,
       logline: clean(input.logline) || story.slice(0, 280),
       genre: clean(input.genre) || null,
@@ -152,7 +153,11 @@ export function buildStoryPlan(input = {}) {
       premise: story,
       beats
     },
-    entity_state: entityState,
+    entity_state: [
+      ...characters.map((character, index) => ({ id: `${projectId}-character-${index + 1}`, type: 'character', name: character.name, state: character.state || {}, continuity: character.continuity || {} })),
+      ...locations.map((name, index) => ({ id: `${projectId}-location-${index + 1}`, type: 'location', name, state: {}, continuity: {} })),
+      ...props.map((name, index) => ({ id: `${projectId}-prop-${index + 1}`, type: 'prop', name, state: {}, continuity: {} }))
+    ],
     world_bible: {
       characters,
       locations: locations.map(name => ({ name, continuity_notes: '' })),
@@ -166,7 +171,7 @@ export function buildStoryPlan(input = {}) {
     },
     dataset: {
       schema_version: 'story-dataset-v1',
-      project_id: input.projectId || null,
+      project_id: projectId,
       entities: {
         characters: characters.map(c => c.name),
         locations,
