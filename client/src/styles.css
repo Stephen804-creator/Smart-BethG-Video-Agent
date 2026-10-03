@@ -84,3 +84,19 @@
 .tool-layer.active{border-color:#647485;background:#151d25}
 @media(max-width:800px){.production-tool-icons{grid-template-columns:repeat(4,1fr)}.tool-control-grid{grid-template-columns:repeat(2,1fr)}.tool-layer-list{grid-template-columns:repeat(2,1fr)}.tool-panel-head{align-items:flex-start;flex-direction:column}.tool-panel-head span{text-align:left}}
 @media(max-width:480px){.production-tool-icons{grid-template-columns:repeat(4,1fr)}.production-tool-icon{padding:7px 3px}.production-tool-icon small{font-size:8px}.tool-control-grid{grid-template-columns:1fr}.tool-layer-list{grid-template-columns:1fr 1fr}}
+
+
+/* Nested tools for each specialist workspace */
+.workspace-tool-dock{margin:12px 0 16px;padding:10px;border:1px solid #252c34;border-radius:13px;background:#0b0f14}
+.workspace-tool-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:2px 3px 9px}
+.workspace-tool-heading>div{display:grid;gap:3px}
+.workspace-tool-heading strong{font-size:12px;color:#e1e7ec}
+.workspace-tool-heading span{font-size:10px;color:#737e89}
+.workspace-tool-icons{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.workspace-tool-icons .production-tool-icon{flex:0 0 72px}
+.workspace-tool-panel{margin-top:9px;padding:11px;border:1px solid #29323b;border-radius:10px;background:#10151b}
+.workspace-tool-panel>label{display:block;font-size:10px;color:#8f99a4}
+.workspace-tool-panel>label input,.workspace-tool-panel>label textarea,.workspace-tool-panel>label select{margin-top:5px}
+.workspace-tool-panel .tool-control-grid label{font-size:10px}
+.workspace-tool-panel .tool-control-grid textarea{min-height:58px}
+@media(max-width:600px){.workspace-tool-icons .production-tool-icon{flex-basis:64px}.workspace-tool-heading{align-items:flex-start}.workspace-tool-heading .tool-collapse{font-size:9px}}
