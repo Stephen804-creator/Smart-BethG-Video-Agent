@@ -30,6 +30,12 @@ function App() {
   const [filmIdea, setFilmIdea] = useState('');
   const [filmAssist, setFilmAssist] = useState(null);
   const [assisting, setAssisting] = useState(false);
+  const [filmProjects, setFilmProjects] = useState([]);
+  const [filmProjectId, setFilmProjectId] = useState('');
+  const [filmProject, setFilmProject] = useState(null);
+  const [shotDraft, setShotDraft] = useState({ framing: 'medium shot', angle: 'eye level', movement: 'static', lens: '35mm', lighting: 'natural cinematic', audio: 'production sound', description: '' });
+  const [takeDraft, setTakeDraft] = useState({ camera: '', lens: '35mm', fps: 24, shutter: '1/48', iso: '400', whiteBalance: '5600K', location: '', mediaUri: '', notes: '' });
+  const [filmTab, setFilmTab] = useState('shots');
 
   async function loadSequences() {
     try {
@@ -140,6 +146,80 @@ function App() {
     }
   }
 
+  async function loadFilmProjects() {
+    const r = await fetch(API + '/film/projects');
+    const data = await r.json();
+    setFilmProjects(data.projects || []);
+  }
+
+  async function createFilmProject() {
+    const r = await fetch(API + '/film/projects', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newSequenceTitle || 'Untitled Film', genre, logline: filmIdea })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Could not create film project.');
+    setFilmProject(data.project);
+    setFilmProjectId(data.project.id);
+    setFilmProjects(prev => [data.project, ...prev]);
+    setStatus('Film project created');
+  }
+
+  async function loadFilmProject(id) {
+    if (!id) return;
+    const r = await fetch(API + '/film/projects/' + id);
+    const data = await r.json();
+    if (r.ok) { setFilmProject(data.project); setFilmProjectId(id); }
+  }
+
+  async function addFilmScene() {
+    if (!filmProjectId) return;
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/scenes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'New Scene', description: filmIdea || 'Scene description' })
+    });
+    const data = await r.json();
+    if (r.ok) setFilmProject(data.project);
+  }
+
+  async function addFilmShot() {
+    if (!filmProjectId) return;
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/shots', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(shotDraft)
+    });
+    const data = await r.json();
+    if (r.ok) {
+      setFilmProject(data.project);
+      setShotDraft({ ...shotDraft, description: '' });
+      setStatus('Shot added to shot list');
+    }
+  }
+
+  async function addFilmTake(shotId) {
+    if (!filmProjectId || !shotId) return;
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/takes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...takeDraft, shotId })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      const fresh = await fetch(API + '/film/projects/' + filmProjectId);
+      const project = await fresh.json();
+      setFilmProject(project.project);
+      setStatus('Take ' + data.take.takeNumber + ' logged');
+    }
+  }
+
+  async function selectFilmTake(shotId, takeId) {
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/shots/' + shotId + '/select-take', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ takeId })
+    });
+    const data = await r.json();
+    if (r.ok) setFilmProject(data.project);
+  }
+
   async function saveSettings() {
     await fetch(API + '/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
     setShowSettings(false);
@@ -147,6 +227,9 @@ function App() {
   }
 
   const activeSequence = sequences.find(item => item.id === sequenceId);
+  const filmShots = filmProject?.shots || [];
+  const filmTakes = filmProject?.takes || [];
+  const selectedFilmShot = filmShots[0] || null;
   const isLuma = provider.startsWith('luma');
 
   return <div className="app">
@@ -194,6 +277,75 @@ function App() {
         <span>{filmAssist.story_plan?.scenes?.length || 0} scenes · {filmAssist.production_plan?.story?.beats?.length || 0} story beats · {filmAssist.production_plan?.tasks?.visual?.length || 0} visual tasks</span>
         <p>{filmAssist.assistant?.message}</p>
         <div className="checklist">{filmAssist.director_checklist?.map((item, i) => <span key={i}>✓ {item}</span>)}</div>
+      </div>}
+    </section>
+
+    {filmMode && <section className="panel film-workspace">
+      <div className="section-head">
+        <div><h2>🎬 Normal Film Production Workspace</h2><span className="hint">Plan the film, record real camera takes, track continuity, then bring approved media into the edit.</span></div>
+        <span className="tag">PRODUCTION</span>
+      </div>
+      <div className="film-project-bar">
+        <select value={filmProjectId} onChange={e => { setFilmProjectId(e.target.value); loadFilmProject(e.target.value); }}>
+          <option value="">Select a film project</option>
+          {filmProjects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+        </select>
+        <button onClick={createFilmProject}>New film project</button>
+      </div>
+      {!filmProject ? <div className="workspace-empty"><strong>Start a real production project</strong><span>Create a project to get scenes, a shot list, take logging and continuity tracking.</span></div> :
+      <div className="workspace-body">
+        <div className="workspace-tabs">
+          <button className={filmTab === 'shots' ? 'active' : ''} onClick={() => setFilmTab('shots')}>Shot List</button>
+          <button className={filmTab === 'takes' ? 'active' : ''} onClick={() => setFilmTab('takes')}>Camera / Takes</button>
+          <button className={filmTab === 'continuity' ? 'active' : ''} onClick={() => setFilmTab('continuity')}>Continuity</button>
+          <button className={filmTab === 'assistant' ? 'active' : ''} onClick={() => setFilmTab('assistant')}>AI Help</button>
+        </div>
+
+        {filmTab === 'shots' && <div className="workspace-grid">
+          <div>
+            <div className="subhead"><strong>Scenes</strong><button onClick={addFilmScene}>+ Scene</button></div>
+            <div className="scene-list">{(filmProject.scenes || []).map(s => <div className="scene-card" key={s.id}><b>Scene {s.number}</b><span>{s.title}</span><small>{s.description}</small></div>)}{!filmProject.scenes?.length && <span className="hint">No scenes yet.</span>}</div>
+          </div>
+          <div>
+            <div className="subhead"><strong>Shot list</strong><span className="hint">{filmShots.length} shots</span></div>
+            <div className="shot-form">
+              <div className="grid3">
+                <label>Framing<select value={shotDraft.framing} onChange={e => setShotDraft({...shotDraft,framing:e.target.value})}><option>wide shot</option><option>full shot</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label>
+                <label>Angle<select value={shotDraft.angle} onChange={e => setShotDraft({...shotDraft,angle:e.target.value})}><option>eye level</option><option>low angle</option><option>high angle</option><option>over the shoulder</option><option>POV</option></select></label>
+                <label>Lens<input value={shotDraft.lens} onChange={e => setShotDraft({...shotDraft,lens:e.target.value})}/></label>
+              </div>
+              <div className="grid3">
+                <label>Movement<select value={shotDraft.movement} onChange={e => setShotDraft({...shotDraft,movement:e.target.value})}><option>static</option><option>pan</option><option>tilt</option><option>push-in</option><option>tracking</option><option>handheld</option></select></label>
+                <label>Lighting<input value={shotDraft.lighting} onChange={e => setShotDraft({...shotDraft,lighting:e.target.value})}/></label>
+                <label>Audio<input value={shotDraft.audio} onChange={e => setShotDraft({...shotDraft,audio:e.target.value})}/></label>
+              </div>
+              <label>Shot description<textarea rows="3" value={shotDraft.description} onChange={e => setShotDraft({...shotDraft,description:e.target.value})} placeholder="What must happen in this shot? Include blocking, action and important visual details."/></label>
+              <button onClick={addFilmShot}>Add shot to production</button>
+            </div>
+            <div className="shot-list">{filmShots.map(s => <div className="shot-row" key={s.id}><div><b>Shot {s.number}</b><span>{s.framing} · {s.angle} · {s.lens || 'lens TBD'} · {s.movement}</span><small>{s.description || 'No description yet.'}</small></div><button onClick={() => { setFilmTab('takes'); setStatus('Log takes for Shot ' + s.number); }}>Log takes</button></div>)}</div>
+          </div>
+        </div>}
+
+        {filmTab === 'takes' && <div className="workspace-grid">
+          <div>
+            <div className="subhead"><strong>Camera take log</strong><span className="hint">Metadata first; media can be linked when available.</span></div>
+            <div className="shot-list">{filmShots.map(s => <div className="shot-row" key={s.id}><div><b>Shot {s.number}</b><span>{s.framing} · {s.movement}</span><small>{filmTakes.filter(t => t.shotId === s.id).length} takes · {s.selectedTakeId ? 'selected take recorded' : 'no selected take'}</small></div><button onClick={() => setTakeDraft({...takeDraft, shotId:s.id})}>Log take</button></div>)}</div>
+          </div>
+          <div className="take-form">
+            <strong>New take</strong><span className="hint">Select a shot above, then record the take on your camera and enter its details.</span>
+            <label>Camera<input value={takeDraft.camera} onChange={e => setTakeDraft({...takeDraft,camera:e.target.value})} placeholder="Camera body"/></label>
+            <div className="grid3"><label>Lens<input value={takeDraft.lens} onChange={e => setTakeDraft({...takeDraft,lens:e.target.value})}/></label><label>FPS<input type="number" value={takeDraft.fps} onChange={e => setTakeDraft({...takeDraft,fps:Number(e.target.value)})}/></label><label>Shutter<input value={takeDraft.shutter} onChange={e => setTakeDraft({...takeDraft,shutter:e.target.value})}/></label></div>
+            <div className="grid3"><label>ISO<input value={takeDraft.iso} onChange={e => setTakeDraft({...takeDraft,iso:e.target.value})}/></label><label>White balance<input value={takeDraft.whiteBalance} onChange={e => setTakeDraft({...takeDraft,whiteBalance:e.target.value})}/></label><label>Location<input value={takeDraft.location} onChange={e => setTakeDraft({...takeDraft,location:e.target.value})}/></label></div>
+            <label>Media path / URL<input value={takeDraft.mediaUri} onChange={e => setTakeDraft({...takeDraft,mediaUri:e.target.value})} placeholder="Optional file or imported-media reference"/></label>
+            <label>Notes<textarea rows="3" value={takeDraft.notes} onChange={e => setTakeDraft({...takeDraft,notes:e.target.value})}/></label>
+            <button disabled={!takeDraft.shotId} onClick={() => addFilmTake(takeDraft.shotId)}>Save take</button>
+          </div>
+          <div className="take-history">{filmTakes.map(t => <div className="take-card" key={t.id}><b>Take {t.takeNumber}</b><span>{t.camera || 'Camera TBD'} · {t.fps}fps · ISO {t.iso || '—'} · {t.shutter || '—'}</span><small>{t.mediaUri || 'No media linked yet.'}</small><button onClick={() => selectFilmTake(t.shotId,t.id)}>{t.selected ? '✓ Selected take' : 'Select as best take'}</button></div>)}</div>
+        </div>}
+
+        {filmTab === 'continuity' && <div className="continuity-board"><strong>Continuity board</strong><span className="hint">This workspace will connect to the existing world-entity system so characters, props, wardrobe and screen direction stay consistent.</span><div className="continuity-grid"><div>Characters<br/><small>Appearance · wardrobe · state</small></div><div>Props<br/><small>Position · condition · ownership</small></div><div>Screen direction<br/><small>Entry/exit · eyelines · geography</small></div><div>Lighting<br/><small>Time · direction · practical sources</small></div></div></div>}
+
+        {filmTab === 'assistant' && <div className="assistant-workspace"><strong>AI production assistant</strong><p>Once your scenes and shots exist, the agent can inspect coverage, continuity and take metadata before you move to the next production step.</p><div className="checklist"><span>✓ Check whether every scene has establishing, action and reaction coverage.</span><span>✓ Flag shots with missing lens, movement or audio notes.</span><span>✓ Compare take metadata for continuity and camera settings.</span><span>✓ Suggest the next practical shot instead of generating blindly.</span></div></div>}
       </div>}
     </section>
 
