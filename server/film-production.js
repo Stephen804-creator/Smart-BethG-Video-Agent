@@ -14,6 +14,7 @@ export function createFilmStore(filePath) {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
   };
   const view = p => ({ ...p, scenes:p.scenes||[], shots:p.shots||[], takes:p.takes||[], assets:p.assets||[], continuity:p.continuity||[] });
+  const touch = p => { p.updatedAt = new Date().toISOString(); };
 
   return {
     listProjects() { return Object.values(read().projects).map(view).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)); },
@@ -31,17 +32,17 @@ export function createFilmStore(filePath) {
     },
     addScene(projectId,input={}) {
       const d=read(),p=d.projects[projectId];if(!p)return null;
-      p.scenes=p.scenes||[]; const s={id:input.id||id('scene'),number:p.scenes.length+1,title:String(input.title||('Scene '+(p.scenes.length+1))).trim(),location:String(input.location||'').trim(),timeOfDay:String(input.timeOfDay||'').trim(),description:String(input.description||'').trim(),status:'planned'};
+      p.scenes=p.scenes||[]; const s={id:input.id||id('scene'),sequence:Number(input.sequence||p.scenes.length+1),number:p.scenes.length+1,title:String(input.title||('Scene '+(p.scenes.length+1))).trim(),location:String(input.location||'').trim(),timeOfDay:String(input.timeOfDay||'').trim(),description:String(input.description||'').trim(),status:'planned'};
       p.scenes.push(s);p.updatedAt=new Date().toISOString();write(d);return view(p);
     },
     addShot(projectId,input={}) {
       const d=read(),p=d.projects[projectId];if(!p)return null;
-      p.shots=p.shots||[];const s={id:input.id||id('shot'),number:p.shots.length+1,sceneId:input.sceneId||p.scenes?.[0]?.id||null,shotType:String(input.shotType||'coverage'),framing:String(input.framing||'medium shot'),angle:String(input.angle||'eye level'),lens:String(input.lens||''),movement:String(input.movement||'static'),lighting:String(input.lighting||''),audio:String(input.audio||'production sound'),duration:Number(input.duration||0)||0,description:String(input.description||''),notes:String(input.notes||''),status:'planned',selectedTakeId:null};
+      p.shots=p.shots||[];const s={id:input.id||id('shot'),sequence:Number(input.sequence||p.shots.length+1),number:p.shots.length+1,sceneId:input.sceneId||p.scenes?.[0]?.id||null,shotType:String(input.shotType||'coverage'),framing:String(input.framing||'medium shot'),angle:String(input.angle||'eye level'),lens:String(input.lens||''),movement:String(input.movement||'static'),lighting:String(input.lighting||''),audio:String(input.audio||'production sound'),duration:Number(input.duration||0)||0,description:String(input.description||''),notes:String(input.notes||''),status:'planned',selectedTakeId:null};
       p.shots.push(s);p.updatedAt=new Date().toISOString();write(d);return view(p);
     },
     addTake(projectId,input={}) {
       const d=read(),p=d.projects[projectId];if(!p)return null;
-      p.takes=p.takes||[];const t={id:input.id||id('take'),shotId:input.shotId||null,takeNumber:p.takes.filter(x=>x.shotId===input.shotId).length+1,camera:String(input.camera||''),lens:String(input.lens||''),fps:Number(input.fps||24)||24,shutter:String(input.shutter||''),iso:String(input.iso||''),whiteBalance:String(input.whiteBalance||''),location:String(input.location||''),recordedAt:input.recordedAt||new Date().toISOString(),mediaUri:String(input.mediaUri||''),notes:String(input.notes||''),selected:false};
+      p.takes=p.takes||[];const t={id:input.id||id('take'),shotId:input.shotId||null,assetId:input.assetId||null,takeNumber:p.takes.filter(x=>x.shotId===input.shotId).length+1,camera:String(input.camera||''),lens:String(input.lens||''),fps:Number(input.fps||24)||24,shutter:String(input.shutter||''),iso:String(input.iso||''),whiteBalance:String(input.whiteBalance||''),location:String(input.location||''),recordedAt:input.recordedAt||new Date().toISOString(),mediaUri:String(input.mediaUri||''),notes:String(input.notes||''),selected:false};
       p.takes.push(t);p.updatedAt=new Date().toISOString();write(d);return t;
     },
     selectTake(projectId,shotId,takeId) {
@@ -54,6 +55,29 @@ export function createFilmStore(filePath) {
       const d=read(),p=d.projects[projectId];if(!p)return null;
       p.assets=p.assets||[];const a={id:input.id||id('asset'),name:String(input.name||'Untitled asset'),sourceType:String(input.sourceType||'camera'),uri:String(input.uri||''),sceneId:input.sceneId||null,shotId:input.shotId||null,mimeType:String(input.mimeType||''),notes:String(input.notes||''),createdAt:new Date().toISOString()};
       p.assets.push(a);p.updatedAt=new Date().toISOString();write(d);return a;
+    },
+    reorderScene(projectId, sceneId, sequence) {
+      const d=read(),p=d.projects[projectId]; if(!p)return null;
+      const scene=p.scenes.find(x=>x.id===sceneId); if(!scene)return null;
+      scene.sequence=Math.max(1,Number(sequence)||1);
+      p.scenes.sort((a,b)=>(a.sequence||0)-(b.sequence||0));
+      p.scenes.forEach((x,i)=>{x.sequence=i+1;x.number=i+1;});
+      touch(p); write(d); return view(p);
+    },
+    reorderShot(projectId, shotId, sequence) {
+      const d=read(),p=d.projects[projectId]; if(!p)return null;
+      const shot=p.shots.find(x=>x.id===shotId); if(!shot)return null;
+      shot.sequence=Math.max(1,Number(sequence)||1);
+      p.shots.sort((a,b)=>(a.sequence||0)-(b.sequence||0));
+      p.shots.forEach((x,i)=>{x.sequence=i+1;x.number=i+1;});
+      touch(p); write(d); return view(p);
+    },
+    updateShot(projectId, shotId, input={}) {
+      const d=read(),p=d.projects[projectId]; if(!p)return null;
+      const shot=p.shots.find(x=>x.id===shotId); if(!shot)return null;
+      const fields=['sceneId','shotType','framing','angle','lens','movement','lighting','audio','duration','description','notes','status'];
+      for(const field of fields) if(input[field]!==undefined) shot[field]=input[field];
+      touch(p); write(d); return view(p);
     },
     addContinuityEvent(projectId,input={}) {
       const d=read(),p=d.projects[projectId];if(!p)return null;
