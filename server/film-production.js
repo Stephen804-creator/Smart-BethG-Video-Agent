@@ -125,6 +125,14 @@ export function createFilmStore(filePath) {
         location: String(input.location || '').trim(),
         timeOfDay: String(input.timeOfDay || '').trim(),
         description: String(input.description || '').trim(),
+        dramaticBeat: String(input.dramaticBeat || '').trim(),
+        characters: Array.isArray(input.characters) ? input.characters : [],
+        blocking: String(input.blocking || '').trim(),
+        action: String(input.action || '').trim(),
+        dialogue: String(input.dialogue || '').trim(),
+        mood: String(input.mood || '').trim(),
+        weather: String(input.weather || '').trim(),
+        props: Array.isArray(input.props) ? input.props : [],
         status: String(input.status || 'planned')
       };
       p.scenes.push(scene);
@@ -139,9 +147,11 @@ export function createFilmStore(filePath) {
       if (!p) return null;
       const scene = (p.scenes || []).find(x => x.id === sceneId);
       if (!scene) return null;
-      for (const field of ['title', 'location', 'timeOfDay', 'description', 'status']) {
+      for (const field of ['title', 'location', 'timeOfDay', 'description', 'dramaticBeat', 'blocking', 'action', 'dialogue', 'mood', 'weather', 'status']) {
         if (input[field] !== undefined) scene[field] = String(input[field] ?? '').trim();
       }
+      if (Array.isArray(input.characters)) scene.characters = input.characters;
+      if (Array.isArray(input.props)) scene.props = input.props;
       if (input.sequence !== undefined) scene.sequence = normalizeSequence(input.sequence, scene.sequence);
       normalizeScenes(p);
       touch(p);
