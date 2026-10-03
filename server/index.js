@@ -38,7 +38,7 @@ function readSettings() {
       hfToken: '',
       lumaApiKey: '',
       lumaModel: 'ray-flash-2',
-      comfyUrl: 'http://127.0.0.1:8188'
+      comfyUrl: process.env.COMFYUI_URL || 'http://127.0.0.1:8188'
     };
   }
 }
@@ -196,7 +196,7 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/settings', (req, res) => {
   const s = readSettings();
-  res.json({ hfSpace: s.hfSpace || 'Lightricks/ltx-video-distilled', hfToken: '', hasHFToken: Boolean(s.hfToken || process.env.HF_TOKEN), lumaApiKey: '', hasLumaApiKey: Boolean(s.lumaApiKey || process.env.LUMAAI_API_KEY), lumaModel: s.lumaModel || 'ray-flash-2', comfyUrl: s.comfyUrl || 'http://127.0.0.1:8188' });
+  res.json({ hfSpace: s.hfSpace || 'Lightricks/ltx-video-distilled', hfToken: '', hasHFToken: Boolean(s.hfToken || process.env.HF_TOKEN), lumaApiKey: '', hasLumaApiKey: Boolean(s.lumaApiKey || process.env.LUMAAI_API_KEY), lumaModel: s.lumaModel || 'ray-flash-2', comfyUrl: s.comfyUrl || process.env.COMFYUI_URL || 'http://127.0.0.1:8188' });
 });
 
 app.post('/api/settings', (req, res) => {
