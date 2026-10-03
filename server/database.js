@@ -26,6 +26,34 @@ export async function initDatabase() {
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb
     );
 
+    CREATE TABLE IF NOT EXISTS media_entities (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      state JSONB NOT NULL DEFAULT '{}'::jsonb,
+      continuity JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(project_id, entity_type, name)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_media_entities_project ON media_entities(project_id);
+    CREATE INDEX IF NOT EXISTS idx_media_entities_type ON media_entities(entity_type);
+
+    CREATE TABLE IF NOT EXISTS media_entity_events (
+      id BIGSERIAL PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      scene_id TEXT,
+      shot_id TEXT,
+      entity_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      changes JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_media_entity_events_entity ON media_entity_events(entity_id);
+
     CREATE TABLE IF NOT EXISTS media_generations (
       id TEXT PRIMARY KEY,
       project_id TEXT,
@@ -114,4 +142,50 @@ export async function getDatabaseStatus() {
   } catch (error) {
     return { enabled: true, connected: false, detail: error?.message || 'Database connection failed.' };
   }
+}
+
+
+export async function upsertWorldEntities(projectId, entities = []) {
+  const db = getPool();
+  if (!db || !projectId) return false;
+
+  for (const entity of entities) {
+    if (!entity?.name || !entity?.type) continue;
+    await db.query(
+      `INSERT INTO media_entities (id, project_id, entity_type, name, state, continuity)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (project_id, entity_type, name) DO UPDATE SET
+         state=media_entities.state || EXCLUDED.state,
+         continuity=media_entities.continuity || EXCLUDED.continuity,
+         updated_at=NOW()`,
+      [
+        entity.id || `${projectId}-${entity.type}-${entity.name}`.toLowerCase().replace(/[^a-z0-9_-]+/g, '-'),
+        projectId,
+        entity.type,
+        entity.name,
+        JSON.stringify(entity.state || {}),
+        JSON.stringify(entity.continuity || {})
+      ]
+    );
+  }
+  return true;
+}
+
+export async function recordEntityEvent(event = {}) {
+  const db = getPool();
+  if (!db || !event.entityId || !event.projectId || !event.eventType) return false;
+  await db.query(
+    `INSERT INTO media_entity_events
+      (project_id, scene_id, shot_id, entity_id, event_type, changes)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [
+      event.projectId,
+      event.sceneId || null,
+      event.shotId || null,
+      event.entityId,
+      event.eventType,
+      JSON.stringify(event.changes || {})
+    ]
+  );
+  return true;
 }
