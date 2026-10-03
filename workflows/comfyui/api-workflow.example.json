@@ -1,0 +1,9 @@
+{
+  "_README": "Copy a real ComfyUI API-format workflow here, then set COMFYUI_WORKFLOW_PATH to its path. Replace the model-specific values you want the app to control with these placeholders: {{prompt}}, {{negative_prompt}}, {{seed}}, {{width}}, {{height}}, {{duration}}, {{frames}}.",
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{prompt}}"
+    }
+  }
+}
