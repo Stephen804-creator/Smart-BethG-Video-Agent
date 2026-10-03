@@ -21,6 +21,11 @@ function App() {
   const [sequences, setSequences] = useState([]);
   const [sequenceId, setSequenceId] = useState('');
   const [newSequenceTitle, setNewSequenceTitle] = useState('');
+  const [mediaFormats, setMediaFormats] = useState([]);
+  const [selectedFormat, setSelectedFormat] = useState('cinematic');
+  const [genre, setGenre] = useState('action');
+  const [formatPlan, setFormatPlan] = useState(null);
+  const [planning, setPlanning] = useState(false);
 
   async function loadSequences() {
     try {
@@ -34,6 +39,7 @@ function App() {
   useEffect(() => {
     fetch(API + '/settings').then(r => r.json()).then(setSettings).catch(() => {});
     loadSequences();
+    fetch(API + '/media-formats').then(r => r.json()).then(data => setMediaFormats(data.formats || [])).catch(() => {});
   }, []);
 
   async function createSequence() {
@@ -80,6 +86,34 @@ function App() {
     }
   }
 
+  async function buildFormatPlan() {
+    if (!prompt.trim() || planning) return;
+    setPlanning(true);
+    setStatus('Building production plan…');
+    try {
+      const r = await fetch(API + '/media/format-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          format: selectedFormat,
+          genre,
+          prompt,
+          title: newSequenceTitle || 'Untitled Project',
+          aspectRatio: ratio,
+          quality: 'cinematic'
+        })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not build production plan.');
+      setFormatPlan(data);
+      setStatus('Production plan ready');
+    } catch (e) {
+      setStatus(e.message || 'Planning failed');
+    } finally {
+      setPlanning(false);
+    }
+  }
+
   async function saveSettings() {
     await fetch(API + '/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
     setShowSettings(false);
@@ -118,6 +152,36 @@ function App() {
         <button onClick={createSequence}>New sequence</button>
       </div>
       {activeSequence && <div className="sequence-track">{activeSequence.shots.length ? activeSequence.shots.map((shot, index) => <span key={shot}>Shot {index + 1}</span>) : <span className="hint">No shots yet. Generate the first shot below.</span>}</div>}
+    </section>
+
+    <section className="panel format-panel">
+      <div className="section-head">
+        <div><h2>Choose your production format</h2><span className="hint">Format decides how the story is produced. Genre stays separate.</span></div>
+        <span className="tag">{selectedFormat}</span>
+      </div>
+      <div className="format-grid">
+        {mediaFormats.map(format => {
+          const icons = { 'audio-story': '🎧', 'picture-story': '🖼️', 'motion-comic': '💥', cinematic: '🎬', anime: '🌸', documentary: '📽️', explainer: '📊' };
+          return <button type="button" key={format.id} className={selectedFormat === format.id ? 'format-card active' : 'format-card'} onClick={() => setSelectedFormat(format.id)}>
+            <span className="format-icon">{icons[format.id] || '🎞️'}</span>
+            <strong>{format.name}</strong>
+            <small>{format.description}</small>
+          </button>;
+        })}
+      </div>
+      <div className="format-controls">
+        <label>Genre
+          <select value={genre} onChange={e => setGenre(e.target.value)}>
+            <option>action</option><option>adventure</option><option>comedy</option><option>drama</option><option>fantasy</option><option>horror</option><option>mystery</option><option>romance</option><option>science fiction</option><option>thriller</option><option>historical</option><option>educational</option>
+          </select>
+        </label>
+        <button onClick={buildFormatPlan} disabled={planning || !prompt.trim()}>{planning ? 'Planning…' : 'Build production plan'} →</button>
+      </div>
+      {formatPlan && <div className="plan-summary">
+        <strong>{formatPlan.project.format_name} · {formatPlan.project.genre}</strong>
+        <span>{formatPlan.production_model.stages.length} stages · {formatPlan.story.beats.length} beats · {formatPlan.tasks.visual.length} visual tasks · {formatPlan.tasks.audio.length} audio tasks</span>
+        <small>Provider-neutral: the plan describes production requirements first; the media router selects actual workers later.</small>
+      </div>}
     </section>
 
     <main>
