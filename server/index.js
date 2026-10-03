@@ -538,24 +538,27 @@ app.post('/api/media/execution-plan', (req, res) => {
   }
 });
 
-app.post('/api/production/execute', async (req, res) => {
+app.post('/api/production/execute', generationRateLimit, async (req, res) => {
   try {
     const graph = req.body?.productionGraph || req.body?.production_graph;
     if (!graph) return res.status(400).json({ error: 'productionGraph is required.' });
-    const runner = createProductionRunner({
-      outputDir,
-      jobsFile,
-      settings: readSettings,
-      workflowPath: comfyWorkflowPath
+    const job = generationQueue.enqueue('production-execution', async () => {
+      const runner = createProductionRunner({
+        outputDir,
+        jobsFile,
+        settings: readSettings,
+        workflowPath: comfyWorkflowPath
+      });
+      return runner.execute(graph, {
+        allowPaid: req.body?.allowPaid === true,
+        preferLocal: req.body?.preferLocal !== false,
+        providerId: req.body?.providerId || ''
+      });
     });
-    const result = await runner.execute(graph, {
-      allowPaid: req.body?.allowPaid === true,
-      preferLocal: req.body?.preferLocal !== false,
-      providerId: req.body?.providerId || ''
-    });
-    res.json(result);
+    res.status(202).json({ status: 'Queued', job });
   } catch (error) {
-    res.status(500).json({ error: error?.message || 'Production execution failed.' });
+    const status = error?.statusCode || 500;
+    res.status(status).json({ error: error?.message || 'Could not queue production execution.' });
   }
 });
 
@@ -591,25 +594,44 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
     if (req.body?.workerId && req.body.workerId !== 'comfyui-worker') return res.status(400).json({ error: 'Unknown worker.' });
-    const settings = readSettings();
-    const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
-    const result = await worker.execute(task);
-    const record = { id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, sound: task.sound, output: result.output, promptId: result.promptId, source: result.source };
-    const datasetRecord = createDatasetRecord({ task, result, worker, soundPlan: task.sound, knowledgeRefs: task.metadata.knowledgeRefs || [] });
-    appendDatasetRecord(datasetFile, datasetRecord);
-    appendGeneration(record);
-    let database = { enabled: false, persisted: false };
-    try {
-      const persisted = await saveGenerationToDatabase(datasetRecord);
-      database = { enabled: Boolean(process.env.DATABASE_URL), persisted: Boolean(persisted) };
-    } catch (dbError) {
-      database = { enabled: true, persisted: false, detail: dbError?.message || 'Database write failed.' };
-      console.error('Generation saved locally; database write failed:', dbError);
-    }
-    res.json({ status: 'Completed', videoUrl: result.output, generation: record, database });
+
+    const job = generationQueue.enqueue('media-generation', async () => {
+      const settings = readSettings();
+      const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
+      const result = await worker.execute(task);
+      const record = {
+        id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: new Date().toISOString(),
+        domain: task.domain,
+        operation: task.operation,
+        provider: 'comfyui',
+        workerId: worker.id,
+        model: task.metadata.model || null,
+        workflow: comfyWorkflowPath || null,
+        prompt: task.prompt,
+        requirements: task.requirements,
+        sound: task.sound,
+        output: result.output,
+        promptId: result.promptId,
+        source: result.source
+      };
+      const datasetRecord = createDatasetRecord({ task, result, worker, soundPlan: task.sound, knowledgeRefs: task.metadata.knowledgeRefs || [] });
+      appendDatasetRecord(datasetFile, datasetRecord);
+      appendGeneration(record);
+      let database = { enabled: false, persisted: false };
+      try {
+        const persisted = await saveGenerationToDatabase(datasetRecord);
+        database = { enabled: Boolean(process.env.DATABASE_URL), persisted: Boolean(persisted) };
+      } catch (dbError) {
+        database = { enabled: true, persisted: false, detail: dbError?.message || 'Database write failed.' };
+        console.error('Generation saved locally; database write failed:', dbError);
+      }
+      return { status: 'Completed', videoUrl: result.output, generation: record, database };
+    });
+    res.status(202).json({ status: 'Queued', job });
   } catch (error) {
-    console.error(error);
-    res.status(502).json({ error: 'Media generation failed.', detail: error?.message || 'Unknown worker error.' });
+    const status = error?.statusCode || 400;
+    res.status(status).json({ error: error?.message || 'Could not queue media generation.' });
   }
 });
 
