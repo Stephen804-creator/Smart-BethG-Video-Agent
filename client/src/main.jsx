@@ -36,6 +36,7 @@ function App() {
   const [shotDraft, setShotDraft] = useState({ framing: 'medium shot', angle: 'eye level', movement: 'static', lens: '35mm', lighting: 'natural cinematic', audio: 'production sound', description: '' });
   const [takeDraft, setTakeDraft] = useState({ camera: '', lens: '35mm', fps: 24, shutter: '1/48', iso: '400', whiteBalance: '5600K', location: '', mediaUri: '', notes: '' });
   const [filmTab, setFilmTab] = useState('shots');
+  const [filmReview, setFilmReview] = useState(null);
 
   async function loadSequences() {
     try {
@@ -211,6 +212,15 @@ function App() {
       setFilmProject(project.project);
       setStatus('Take ' + data.take.takeNumber + ' logged');
     }
+  }
+
+  async function reviewFilmProject() {
+    if (!filmProjectId) return;
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/assistant', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const data = await r.json();
+    if (r.ok) { setFilmReview(data); setFilmTab('assistant'); setStatus('Production review ready'); }
   }
 
   async function selectFilmTake(shotId, takeId) {
