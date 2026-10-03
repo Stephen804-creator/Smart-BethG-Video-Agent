@@ -82,6 +82,10 @@ export function createFilmStore(filePath) {
         title: String(input.title || 'Untitled Film').trim(),
         genre: String(input.genre || 'drama').trim(),
         logline: String(input.logline || '').trim(),
+        premise: String(input.premise || '').trim(),
+        story: { theme: '', tone: '', premise: String(input.premise || '').trim(), acts: [] },
+        characters: [],
+        world: { setting: '', rules: [], locations: [], factions: [], terminology: [] },
         format: 'cinematic',
         createdAt: now,
         updatedAt: now,
@@ -102,6 +106,7 @@ export function createFilmStore(filePath) {
       if (input.title !== undefined) p.title = String(input.title).trim();
       if (input.genre !== undefined) p.genre = String(input.genre).trim();
       if (input.logline !== undefined) p.logline = String(input.logline).trim();
+      if (input.premise !== undefined) { p.premise = String(input.premise).trim(); p.story = { ...(p.story || {}), premise: p.premise }; }
       touch(p);
       write(d);
       return view(p);
@@ -333,6 +338,52 @@ export function createFilmStore(filePath) {
       touch(p);
       write(d);
       return view(p);
+    },
+
+    updateStory(projectId, input = {}) {
+      const d = read(), p = d.projects[projectId];
+      if (!p) return null;
+      p.story = { theme: '', tone: '', premise: p.premise || '', acts: [], ...(p.story || {}), ...input };
+      if (input.premise !== undefined) p.premise = String(input.premise || '').trim();
+      touch(p); write(d); return view(p);
+    },
+
+    addCharacter(projectId, input = {}) {
+      const d = read(), p = d.projects[projectId];
+      if (!p) return null;
+      p.characters = p.characters || [];
+      const character = {
+        id: input.id || id('character'),
+        name: String(input.name || 'Unnamed Character').trim(),
+        role: String(input.role || '').trim(),
+        description: String(input.description || '').trim(),
+        appearance: String(input.appearance || '').trim(),
+        personality: String(input.personality || '').trim(),
+        relationships: Array.isArray(input.relationships) ? input.relationships : [],
+        state: input.state || {},
+        references: Array.isArray(input.references) ? input.references : []
+      };
+      p.characters.push(character); touch(p); write(d); return view(p);
+    },
+
+    updateCharacter(projectId, characterId, input = {}) {
+      const d = read(), p = d.projects[projectId];
+      if (!p) return null;
+      const character = (p.characters || []).find(x => x.id === characterId);
+      if (!character) return null;
+      for (const field of ['name','role','description','appearance','personality']) {
+        if (input[field] !== undefined) character[field] = String(input[field] || '').trim();
+      }
+      if (Array.isArray(input.relationships)) character.relationships = input.relationships;
+      if (input.state && typeof input.state === 'object') character.state = { ...(character.state || {}), ...input.state };
+      touch(p); write(d); return view(p);
+    },
+
+    updateWorld(projectId, input = {}) {
+      const d = read(), p = d.projects[projectId];
+      if (!p) return null;
+      p.world = { setting: '', rules: [], locations: [], factions: [], terminology: [], ...(p.world || {}), ...input };
+      touch(p); write(d); return view(p);
     },
 
     addContinuityEvent(projectId, input = {}) {
