@@ -12,7 +12,7 @@ This document converts the full repository evaluation into an execution backlog.
 - [PARTIAL] Media metadata: duration probing exists; complete technical QC is not yet centralized.
 - [MISSING] Automated software test suite and CI.
 - [MISSING] Central quality/evaluation engine.
-- [MISSING] Automated frame sampling and visual artifact analysis.
+- [PARTIAL] Automated frame sampling is implemented; visual artifact analysis is still missing.
 - [MISSING] Prompt/shot semantic adherence evaluation.
 - [MISSING] Character/reference consistency evaluation.
 - [MISSING] Background/scene consistency evaluation.
@@ -33,13 +33,13 @@ This document converts the full repository evaluation into an execution backlog.
 1. [DONE IN THIS ITERATION] Create a central video QC engine with technical validation.
 2. [DONE IN THIS ITERATION] Add safe evaluation API for generated output files.
 3. [DONE IN THIS ITERATION] Persist structured QC results in the dataset manifest.
-4. [NEXT] Automatically run QC after every successful generation.
-5. [NEXT] Add explicit PASS / REVIEW / FAIL decision rules.
-6. [NEXT] Add evaluation IDs, timestamps, evaluator version and evidence references.
+4. [DONE IN THIS ITERATION] Automatically run QC after every successful generation.
+5. [DONE IN THIS ITERATION] Add explicit PASS / REVIEW / FAIL decision rules.
+6. [DONE IN THIS ITERATION] Add evaluation IDs, timestamps, evaluator version and evidence references.
 
 ### Phase 2 — Visual inspection
-7. [NEXT] Sample representative frames with ffmpeg.
-8. [NEXT] Add frame-level image-quality checks.
+7. [DONE IN THIS ITERATION] Sample representative frames with ffmpeg.
+8. [NEXT] Add frame-level image-quality checks from sampled evidence.
 9. [NEXT] Add temporal-flicker diagnostics.
 10. [NEXT] Add motion-smoothness diagnostics.
 11. [NEXT] Add static/near-static detection.
