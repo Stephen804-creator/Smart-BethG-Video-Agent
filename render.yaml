@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: cinematic-agent
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: HF_TOKEN
+        sync: false
