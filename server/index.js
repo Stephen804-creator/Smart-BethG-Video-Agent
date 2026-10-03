@@ -32,7 +32,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const app = express();
 const port = Number(process.env.PORT || 8787);
-const settingsFile = path.join(root, 'server', 'settings.json');
 const outputDir = path.join(root, 'output');
 const dataDir = path.join(root, 'data');
 const generationsFile = path.join(dataDir, 'generations.jsonl');
@@ -72,21 +71,13 @@ app.use('/api', (req, res, next) => {
 });
 
 function readSettings() {
-  try {
-    return JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-  } catch {
-    return {
-      hfSpace: 'Lightricks/ltx-video-distilled',
-      hfToken: '',
-      lumaApiKey: '',
-      lumaModel: 'ray-flash-2',
-      comfyUrl: process.env.COMFYUI_URL || 'http://127.0.0.1:8188'
-    };
-  }
-}
-
-function writeSettings(settings) {
-  fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+  return {
+    hfSpace: process.env.HF_SPACE || 'Lightricks/ltx-video-distilled',
+    hfToken: process.env.HF_TOKEN || '',
+    lumaApiKey: process.env.LUMAAI_API_KEY || '',
+    lumaModel: ['ray-flash-2', 'ray-2'].includes(process.env.LUMA_MODEL) ? process.env.LUMA_MODEL : 'ray-flash-2',
+    comfyUrl: process.env.COMFYUI_URL || 'http://127.0.0.1:8188'
+  };
 }
 
 function appendGeneration(record) {
@@ -586,7 +577,7 @@ app.get('/api/workers', async (req, res) => {
   res.json({ workers: [{ id: worker.id, runtime: worker.runtime, configured: worker.configured, health: worker.health, workflowPathConfigured: Boolean(comfyWorkflowPath) }] });
 });
 
-app.post('/api/media/generate', async (req, res) => {
+app.post('/api/media/generate', generationRateLimit, async (req, res) => {
   try {
     const task = normalizeMediaTask(req.body || {});
     task.sound = normalizeSoundPlan(req.body?.sound || {});
@@ -642,28 +633,24 @@ app.get('/api/providers', async (req, res) => {
 app.get('/api/database', async (req, res) => { res.json(await getDatabaseStatus()); });
 
 app.get('/api/health', async (req, res) => {
-  const s = readSettings();
   const database = await getDatabaseStatus();
-  res.json({ ok: true, service: 'cinematic-agent-v1', database, providers: { huggingfaceLtx: Boolean(s.hfToken || process.env.HF_TOKEN), luma: Boolean(s.lumaApiKey || process.env.LUMAAI_API_KEY), comfyui: Boolean(s.comfyUrl) } });
+  res.json({ ok: true, service: 'cinematic-agent-v1', database });
 });
 
 app.get('/api/settings', (req, res) => {
   const s = readSettings();
-  res.json({ hfSpace: s.hfSpace || 'Lightricks/ltx-video-distilled', hfToken: '', hasHFToken: Boolean(s.hfToken || process.env.HF_TOKEN), lumaApiKey: '', hasLumaApiKey: Boolean(s.lumaApiKey || process.env.LUMAAI_API_KEY), lumaModel: s.lumaModel || 'ray-flash-2', comfyUrl: s.comfyUrl || process.env.COMFYUI_URL || 'http://127.0.0.1:8188' });
+  res.json({
+    hfSpace: s.hfSpace,
+    hasHFToken: Boolean(s.hfToken),
+    hasLumaApiKey: Boolean(s.lumaApiKey),
+    lumaModel: s.lumaModel,
+    comfyConfigured: Boolean(process.env.COMFYUI_URL),
+    secretsEditable: false
+  });
 });
 
 app.post('/api/settings', (req, res) => {
-  const old = readSettings();
-  const incoming = req.body || {};
-  const settings = {
-    hfSpace: incoming.hfSpace || old.hfSpace || 'Lightricks/ltx-video-distilled',
-    hfToken: incoming.hfToken && incoming.hfToken !== '••••••••' ? incoming.hfToken : old.hfToken || '',
-    lumaApiKey: incoming.lumaApiKey && incoming.lumaApiKey !== '••••••••' ? incoming.lumaApiKey : old.lumaApiKey || '',
-    lumaModel: ['ray-flash-2', 'ray-2'].includes(incoming.lumaModel) ? incoming.lumaModel : old.lumaModel || 'ray-flash-2',
-    comfyUrl: incoming.comfyUrl || old.comfyUrl || 'http://127.0.0.1:8188'
-  };
-  writeSettings(settings);
-  res.json({ ok: true });
+  res.status(410).json({ error: 'Provider secrets are server-managed. Set HF_TOKEN, LUMAAI_API_KEY and COMFYUI_URL in the deployment environment.' });
 });
 
 app.get('/api/generations', (req, res) => {
@@ -685,7 +672,7 @@ app.post('/api/sequences/:id/shots', (req, res) => {
   res.json({ sequence });
 });
 
-app.post('/api/generate', async (req, res) => {
+app.post('/api/generate', generationRateLimit, async (req, res) => {
   const { provider, prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId } = req.body || {};
   if (!prompt?.trim()) return res.status(400).json({ error: 'A scene description is required.' });
 
@@ -739,6 +726,8 @@ if (fs.existsSync(clientDist)) {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 }
+
+try { assertAuthConfigured(); } catch (error) { console.error(error.message); if (process.env.NODE_ENV === 'production') process.exitCode = 1; }
 
 initDatabase().then(() => {
   app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
