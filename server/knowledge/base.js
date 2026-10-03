@@ -1,5 +1,53 @@
 const KNOWLEDGE = [
   {
+    id: 'visual-storytelling.blocking-and-eyelines',
+    domain: 'visual-storytelling',
+    title: 'Blocking, eyelines and screen direction',
+    concepts: ['blocking', 'eyeline', 'screen direction', '180-degree rule', 'spatial continuity'],
+    relationships: [
+      ['blocking', 'organizes', 'where subjects move and relate within the frame'],
+      ['eyeline', 'connects', 'a subject with what they are looking at'],
+      ['screen direction', 'supports', 'spatial continuity across cuts']
+    ],
+    productionUse: 'Plan movement and screen direction before generation so consecutive shots preserve understandable geography.'
+  },
+  {
+    id: 'production.shot-list',
+    domain: 'production',
+    title: 'Shot lists and production planning',
+    concepts: ['shot list', 'scene', 'shot', 'coverage', 'continuity', 'production plan'],
+    relationships: [
+      ['shot list', 'organizes', 'planned coverage'],
+      ['coverage', 'supports', 'editorial choices'],
+      ['continuity', 'connects', 'adjacent shots']
+    ],
+    productionUse: 'Turn a scene into intentional shots instead of asking a generator to produce an entire scene blindly.'
+  },
+  {
+    id: 'ai-video.reference-conditioning',
+    domain: 'ai-video',
+    title: 'Reference-driven generation',
+    concepts: ['reference image', 'reference video', 'identity preservation', 'conditioning', 'keyframe'],
+    relationships: [
+      ['reference image', 'conditions', 'appearance'],
+      ['reference video', 'conditions', 'motion and temporal behavior'],
+      ['keyframe', 'anchors', 'a visual state at a chosen point in time']
+    ],
+    productionUse: 'Store references with each shot so continuity can be reproduced rather than relying only on prose prompts.'
+  },
+  {
+    id: 'editing.coverage-and-pacing',
+    domain: 'editing',
+    title: 'Coverage and pacing',
+    concepts: ['coverage', 'cutting rhythm', 'reaction shot', 'insert', 'establishing shot', 'montage'],
+    relationships: [
+      ['reaction shot', 'reveals', 'character response'],
+      ['insert', 'isolates', 'a meaningful object or detail'],
+      ['montage', 'compresses', 'time or repeated action']
+    ],
+    productionUse: 'Generate coverage intentionally so the final editor has meaningful choices rather than unrelated clips.'
+  },
+  {
     id: 'cinematography.shot-types',
     domain: 'cinematography',
     title: 'Shot size and visual purpose',
