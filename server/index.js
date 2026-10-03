@@ -86,7 +86,9 @@ function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
 }
 
 async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId }) {
-  const shotPrompt = buildShotPrompt({ prompt, framing, cameraMovement, lighting });
+  const reference = referenceGenerationId ? findGeneration(generationsFile, referenceGenerationId) : null;
+  const continuityPrompt = reference ? `Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent. Previous shot: ${reference.prompt}` : '';
+  const shotPrompt = buildShotPrompt({ prompt: [continuityPrompt, prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
   const settings = readSettings();
   const space = settings.hfSpace || 'Lightricks/ltx-video-distilled';
   const token = settings.hfToken || process.env.HF_TOKEN || undefined;
