@@ -128,14 +128,24 @@ function buildBeatPlan(input, storyPlan) {
     })).filter(beat => beat.description);
   }
 
-  return (storyPlan?.scenes || []).flatMap(scene =>
-    (scene.beats || []).map((beat, index) => ({
-      beat_id: beat.id || `${scene.scene_id}-beat-${index + 1}`,
-      description: beat.description || beat.text || '',
-      scene_id: scene.scene_id,
-      importance: beat.importance || 'normal'
-    }))
-  );
+  if (Array.isArray(storyPlan?.story?.beats) && storyPlan.story.beats.length) {
+    return storyPlan.story.beats.map((description, index) => {
+      const scene = storyPlan.scenes?.[index] || null;
+      return {
+        beat_id: `beat-${String(index + 1).padStart(3, '0')}`,
+        description: typeof description === 'string' ? description : String(description?.description || description?.text || ''),
+        scene_id: scene?.scene_id || null,
+        importance: description?.importance || 'normal'
+      };
+    }).filter(beat => beat.description);
+  }
+
+  return (storyPlan?.scenes || []).map((scene, index) => ({
+    beat_id: `beat-${String(index + 1).padStart(3, '0')}`,
+    description: scene.story_beat || '',
+    scene_id: scene.scene_id,
+    importance: 'normal'
+  })).filter(beat => beat.description);
 }
 
 function makeVisualTask(formatId, beat, index, input) {
@@ -177,9 +187,14 @@ function makeVisualTask(formatId, beat, index, input) {
   const template = map[formatId];
   if (!template) return null;
 
+  const sceneId = beat.scene_id || null;
+  const shotId = formatId === 'cinematic' && sceneId ? `${sceneId}-shot-001` : null;
+
   return {
     task_id: `visual-${String(index + 1).padStart(3, '0')}`,
     beat_id: beat.beat_id,
+    scene_id: sceneId,
+    shot_id: shotId,
     domain: 'media',
     operation: template.operation,
     purpose: template.purpose,
