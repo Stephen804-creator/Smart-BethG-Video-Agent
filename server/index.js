@@ -70,7 +70,22 @@ function probeDuration(filepath) {
   });
 }
 
-async function generateWithLtx({ prompt, duration, ratio }) {
+function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
+  const controls = [
+    `Framing: ${framing || 'medium shot'}.`,
+    `Camera movement: ${cameraMovement || 'slow push-in'}.`,
+    `Lighting: ${lighting || 'natural cinematic'}.`
+  ];
+  return [
+    'Single continuous cinematic shot.',
+    prompt.trim(),
+    ...controls,
+    'Keep the main subject, environment and visual identity consistent throughout the shot. Do not introduce a new scene or unrelated subjects.'
+  ].join(' ');
+}
+
+async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting }) {
+  const shotPrompt = buildShotPrompt({ prompt, framing, cameraMovement, lighting });
   const settings = readSettings();
   const space = settings.hfSpace || 'Lightricks/ltx-video-distilled';
   const token = settings.hfToken || process.env.HF_TOKEN || undefined;
@@ -82,7 +97,7 @@ async function generateWithLtx({ prompt, duration, ratio }) {
   });
 
   const payload = [
-    prompt,
+    shotPrompt,
     'worst quality, inconsistent motion, blurry, jittery, distorted',
     null,
     null,
@@ -134,6 +149,10 @@ async function generateWithLtx({ prompt, duration, ratio }) {
     model: 'LTX Video 0.9.8 13B Distilled',
     mode: 'text-to-video',
     prompt,
+    generatedPrompt: shotPrompt,
+    framing,
+    cameraMovement,
+    lighting,
     requestedDuration: Number(duration),
     duration: actualDuration ?? Number(duration),
     durationMeasured: actualDuration !== null,
@@ -190,7 +209,7 @@ app.get('/api/generations', (req, res) => {
 });
 
 app.post('/api/generate', async (req, res) => {
-  const { provider, prompt, duration, ratio } = req.body || {};
+  const { provider, prompt, duration, ratio, framing, cameraMovement, lighting } = req.body || {};
   if (!prompt?.trim()) return res.status(400).json({ error: 'A scene description is required.' });
 
   try {
@@ -198,7 +217,7 @@ app.post('/api/generate', async (req, res) => {
       const allowedDurations = [2, 4, 6, 8];
       const safeDuration = allowedDurations.includes(Number(duration)) ? Number(duration) : 2;
       const safeRatio = ['16:9', '9:16', '1:1'].includes(ratio) ? ratio : '16:9';
-      return res.json(await generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio }));
+      return res.json(await generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting }));
     }
 
     if (provider === 'comfyui') {
