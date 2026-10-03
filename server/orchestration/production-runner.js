@@ -4,11 +4,15 @@ import { normalizeMediaTask, validateMediaTask } from '../workers/media-task.js'
 import { createComfyWorker } from '../workers/comfyui-worker.js';
 import { listProviders } from '../router/provider-registry.js';
 import { chooseProvider } from '../router/scorer.js';
+import { createDatasetRecord, appendDatasetRecord } from '../dataset/manifest.js';
+import { evaluateVideoFile } from '../evaluation/video-qc.js';
+import { saveGenerationToDatabase } from '../database.js';
 
 function now() { return new Date().toISOString(); }
 
 export function createProductionRunner({ outputDir, jobsFile, settings, workflowPath }) {
   fs.mkdirSync(path.dirname(jobsFile), { recursive: true });
+  const datasetFile = path.join(path.dirname(jobsFile), 'dataset-manifest.jsonl');
 
   function save(job) {
     fs.appendFileSync(jobsFile, JSON.stringify(job) + '\n');
@@ -145,9 +149,28 @@ export function createProductionRunner({ outputDir, jobsFile, settings, workflow
         save(job);
 
         const result = await comfy.execute(task);
+        let evaluation = {};
+        try {
+          const outputPath = path.join(outputDir, path.basename(String(result.output || '').replace(/^\/output\//, '')));
+          evaluation = await evaluateVideoFile(outputPath, { requestedDuration: task.requirements?.duration || null, frameOutputRoot: path.join(path.dirname(jobsFile), 'evaluation-frames') });
+        } catch (error) {
+          evaluation = { decision: 'UNAVAILABLE', findings: [{ severity: 'REVIEW', code: 'QC_UNAVAILABLE', message: error?.message || 'Quality control unavailable.' }] };
+        }
+        const datasetRecord = createDatasetRecord({
+          task,
+          result,
+          worker: { id: comfy.id, provider: 'comfyui', runtime: comfy.runtime },
+          evaluation,
+          soundPlan: task.sound || null,
+          knowledgeRefs: task.metadata?.knowledgeRefs || []
+        });
+        appendDatasetRecord(datasetFile, datasetRecord);
+        try { await saveGenerationToDatabase(datasetRecord); } catch (error) { console.error('Production result saved locally; database write failed:', error); }
         job.status = 'completed';
         job.completed_at = now();
         job.output = result;
+        job.evaluation = evaluation;
+        job.dataset_record_id = datasetRecord.dataset_id;
         save(job);
       } catch (error) {
         job.status = 'failed';
