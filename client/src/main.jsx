@@ -37,6 +37,8 @@ function App() {
   const [takeDraft, setTakeDraft] = useState({ camera: '', lens: '35mm', fps: 24, shutter: '1/48', iso: '400', whiteBalance: '5600K', location: '', mediaUri: '', notes: '' });
   const [filmTab, setFilmTab] = useState('shots');
   const [filmReview, setFilmReview] = useState(null);
+  const [assetUploadShotId, setAssetUploadShotId] = useState('');
+  const [uploadingAsset, setUploadingAsset] = useState(false);
 
   async function loadSequences() {
     try {
@@ -214,6 +216,37 @@ function App() {
     }
   }
 
+  async function uploadFilmAsset(file, shotId = assetUploadShotId) {
+    if (!filmProjectId || !file) return;
+    setUploadingAsset(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      if (shotId) form.append('shotId', shotId);
+      const r = await fetch(API + '/film/projects/' + filmProjectId + '/assets/upload', { method: 'POST', body: form });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not upload media.');
+      const fresh = await fetch(API + '/film/projects/' + filmProjectId);
+      const project = await fresh.json();
+      setFilmProject(project.project);
+      setStatus('Media imported and inspected');
+    } catch (error) {
+      setStatus(error.message || 'Media upload failed');
+    } finally {
+      setUploadingAsset(false);
+    }
+  }
+
+  async function attachAssetToTake(assetId, takeId) {
+    if (!filmProjectId || !assetId || !takeId) return;
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/assets/' + assetId + '/attach-take', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ takeId })
+    });
+    const data = await r.json();
+    if (r.ok) setFilmProject(data.project);
+  }
+
   async function reviewFilmProject() {
     if (!filmProjectId) return;
     const r = await fetch(API + '/film/projects/' + filmProjectId + '/assistant', {
@@ -310,6 +343,7 @@ function App() {
           <button className={filmTab === 'shots' ? 'active' : ''} onClick={() => setFilmTab('shots')}>Shot List</button>
           <button className={filmTab === 'takes' ? 'active' : ''} onClick={() => setFilmTab('takes')}>Camera / Takes</button>
           <button className={filmTab === 'continuity' ? 'active' : ''} onClick={() => setFilmTab('continuity')}>Continuity</button>
+          <button className={filmTab === 'assets' ? 'active' : ''} onClick={() => setFilmTab('assets')}>Media Assets</button>
           <button className={filmTab === 'assistant' ? 'active' : ''} onClick={() => setFilmTab('assistant')}>AI Help</button>
         </div>
 
@@ -356,6 +390,42 @@ function App() {
         </div>}
 
         {filmTab === 'continuity' && <div className="continuity-board"><strong>Continuity board</strong><span className="hint">This workspace will connect to the existing world-entity system so characters, props, wardrobe and screen direction stay consistent.</span><div className="continuity-grid"><div>Characters<br/><small>Appearance · wardrobe · state</small></div><div>Props<br/><small>Position · condition · ownership</small></div><div>Screen direction<br/><small>Entry/exit · eyelines · geography</small></div><div>Lighting<br/><small>Time · direction · practical sources</small></div></div></div>}
+
+        {filmTab === 'assets' && <div className="asset-workspace">
+          <div className="subhead"><strong>Production media</strong><span className="hint">{filmProject.assets?.length || 0} assets</span></div>
+          <div className="asset-import">
+            <label>Attach upload to shot
+              <select value={assetUploadShotId} onChange={e => setAssetUploadShotId(e.target.value)}>
+                <option value="">No shot / project asset</option>
+                {filmShots.map(s => <option key={s.id} value={s.id}>Shot {s.number} · {s.framing}</option>)}
+              </select>
+            </label>
+            <label className="file-input">Choose video/image/audio
+              <input type="file" accept="video/*,image/*,audio/*" disabled={uploadingAsset} onChange={e => { const file=e.target.files?.[0]; if(file) uploadFilmAsset(file); e.target.value=''; }}/>
+            </label>
+            <span className="hint">{uploadingAsset ? 'Uploading, hashing and inspecting media…' : 'Files are stored as project assets. If ffprobe is available, technical metadata is recorded automatically.'}</span>
+          </div>
+          <div className="asset-grid">
+            {(filmProject.assets || []).map(asset => {
+              const isVideo = String(asset.mimeType || '').startsWith('video/');
+              const isImage = String(asset.mimeType || '').startsWith('image/');
+              return <div className="asset-card" key={asset.id}>
+                <div className="asset-preview">
+                  {isVideo ? <video src={asset.uri} controls preload="metadata"/> : isImage ? <img src={asset.uri} alt={asset.name}/> : <span>MEDIA</span>}
+                </div>
+                <strong>{asset.name}</strong>
+                <small>{asset.size ? Math.round(asset.size / 1024 / 1024 * 10) / 10 + ' MB' : 'size unknown'} · {asset.mimeType || 'unknown type'}</small>
+                <small>{asset.duration != null ? asset.duration + 's' : 'duration —'} · {asset.width && asset.height ? asset.width + '×' + asset.height : 'dimensions —'} · {asset.fps ? asset.fps + ' fps' : 'fps —'}</small>
+                <small>{asset.codec ? 'codec ' + asset.codec : 'codec —'} · audio {asset.hasAudio == null ? '—' : asset.hasAudio ? 'yes' : 'no'}</small>
+                <small className="asset-hash">{asset.sha256 ? 'SHA-256 ' + asset.sha256.slice(0, 16) + '…' : 'No checksum'}</small>
+                <div className="asset-actions">
+                  {filmTakes.filter(t => !t.assetId).slice(0, 6).map(t => <button key={t.id} onClick={() => attachAssetToTake(asset.id, t.id)}>Attach to Take {t.takeNumber}</button>)}
+                </div>
+              </div>;
+            })}
+            {!filmProject.assets?.length && <span className="hint">No media imported yet.</span>}
+          </div>
+        </div>}
 
         {filmTab === 'assistant' && <div className="assistant-workspace"><strong>AI production assistant</strong><p>The assistant reviews the actual project state before recommending the next production step.</p><button onClick={reviewFilmProject}>Analyze this production</button>{filmReview && <div className="review-result"><b>{filmReview.summary.shots} shots · {filmReview.summary.takes} takes</b>{filmReview.recommendations.map((item,i)=><span key={i}>• {item}</span>)}<strong>Next: {filmReview.next_action}</strong></div>}<div className="checklist"><span>✓ Check establishing, action and reaction coverage.</span><span>✓ Track characters, props, wardrobe and screen direction.</span><span>✓ Compare camera, lens, FPS, shutter and ISO across takes.</span><span>✓ Mix real camera footage with AI-generated shots when needed.</span></div></div>}
       </div>}
