@@ -71,8 +71,7 @@ function writeSettings(settings) {
 }
 
 function appendGeneration(record) {
-  fs.appendFileSync(generationsFile, JSON.stringify(record) + '
-');
+  fs.appendFileSync(generationsFile, JSON.stringify(record) + '\n');
 }
 
 function dimensionsForRatio(ratio) {
