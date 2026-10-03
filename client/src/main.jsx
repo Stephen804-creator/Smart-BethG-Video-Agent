@@ -43,6 +43,8 @@ function App() {
   const [uploadingAsset, setUploadingAsset] = useState(false);
   const [storyDraft, setStoryDraft] = useState({ premise: '', theme: '', tone: '', setting: '', rules: '', locations: '', factions: '', terminology: '' });
   const [characterDraft, setCharacterDraft] = useState({ name: '', role: '', appearance: '', personality: '', description: '' });
+  const [selectedSceneId, setSelectedSceneId] = useState('');
+  const [sceneDraft, setSceneDraft] = useState({ title: '', location: '', timeOfDay: '', dramaticBeat: '', characters: '', blocking: '', action: '', dialogue: '', mood: '', weather: '', props: '', description: '' });
 
   async function loadSequences() {
     try {
@@ -179,7 +181,14 @@ function App() {
     if (!id) return;
     const r = await fetch(API + '/film/projects/' + id);
     const data = await r.json();
-    if (r.ok) { setFilmProject(data.project); setFilmProjectId(id); syncStoryDraft(data.project); }
+    if (r.ok) {
+      setFilmProject(data.project);
+      setFilmProjectId(id);
+      syncStoryDraft(data.project);
+      const firstScene = data.project?.scenes?.[0];
+      setSelectedSceneId(prev => prev && data.project.scenes.some(s => s.id === prev) ? prev : (firstScene?.id || ''));
+      syncSceneDraft(firstScene);
+    }
   }
 
   function syncStoryDraft(project) {
@@ -195,6 +204,35 @@ function App() {
       factions: Array.isArray(world.factions) ? world.factions.join('\n') : '',
       terminology: Array.isArray(world.terminology) ? world.terminology.join('\n') : ''
     });
+  }
+
+  function syncSceneDraft(scene) {
+    if (!scene) {
+      setSceneDraft({ title: '', location: '', timeOfDay: '', dramaticBeat: '', characters: '', blocking: '', action: '', dialogue: '', mood: '', weather: '', props: '', description: '' });
+      return;
+    }
+    setSceneDraft({
+      title: scene.title || '', location: scene.location || '', timeOfDay: scene.timeOfDay || '',
+      dramaticBeat: scene.dramaticBeat || '', characters: Array.isArray(scene.characters) ? scene.characters.join(', ') : '',
+      blocking: scene.blocking || '', action: scene.action || '', dialogue: scene.dialogue || '', mood: scene.mood || '',
+      weather: scene.weather || '', props: Array.isArray(scene.props) ? scene.props.join(', ') : '', description: scene.description || ''
+    });
+  }
+
+  async function saveScene() {
+    if (!filmProjectId || !selectedSceneId) return;
+    const payload = {
+      ...sceneDraft,
+      characters: sceneDraft.characters.split(',').map(x => x.trim()).filter(Boolean),
+      props: sceneDraft.props.split(',').map(x => x.trim()).filter(Boolean)
+    };
+    const r = await fetch(API + '/film/projects/' + filmProjectId + '/scenes/' + selectedSceneId, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    const data = await r.json();
+    if (!r.ok) { setStatus(data.error || 'Could not save scene.'); return; }
+    setFilmProject(data.project);
+    setStatus('Scene plan saved');
   }
 
   async function saveStoryWorld() {
@@ -235,10 +273,16 @@ function App() {
     if (!filmProjectId) return;
     const r = await fetch(API + '/film/projects/' + filmProjectId + '/scenes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'New Scene', description: filmIdea || 'Scene description' })
+      body: JSON.stringify({ title: 'New Scene', description: filmIdea || 'Scene description', dramaticBeat: '', characters: [], blocking: '', action: '', dialogue: '', mood: '', weather: '', props: [] })
     });
     const data = await r.json();
-    if (r.ok) setFilmProject(data.project);
+    if (r.ok) {
+      setFilmProject(data.project);
+      const created = data.project.scenes[data.project.scenes.length - 1];
+      setSelectedSceneId(created?.id || '');
+      syncSceneDraft(created);
+      setStatus('Scene created');
+    }
   }
 
   async function addFilmShot() {
@@ -473,8 +517,26 @@ function App() {
 
         {filmTab === 'shots' && <div className="workspace-grid">
           <div>
-            <div className="subhead"><strong>Scenes</strong><button onClick={addFilmScene}>+ Scene</button></div>
-            <div className="scene-list">{(filmProject.scenes || []).map(s => <div className="scene-card" key={s.id}><b>Scene {s.number}</b><span>{s.title}</span><small>{s.description}</small></div>)}{!filmProject.scenes?.length && <span className="hint">No scenes yet.</span>}</div>
+            <div className="subhead"><strong>Scene builder</strong><button onClick={addFilmScene}>+ Scene</button></div>
+            <div className="scene-list">{(filmProject.scenes || []).map(s => <button className={selectedSceneId === s.id ? 'scene-card active' : 'scene-card'} key={s.id} onClick={() => { setSelectedSceneId(s.id); syncSceneDraft(s); }}><b>Scene {s.number}</b><span>{s.title}</span><small>{s.dramaticBeat || s.description || 'No dramatic beat yet.'}</small></button>)}{!filmProject.scenes?.length && <span className="hint">No scenes yet.</span>}</div>
+            {selectedSceneId && <div className="scene-builder-form">
+              <div className="grid2">
+                <label>Scene title<input value={sceneDraft.title} onChange={e => setSceneDraft({...sceneDraft,title:e.target.value})}/></label>
+                <label>Location<input value={sceneDraft.location} onChange={e => setSceneDraft({...sceneDraft,location:e.target.value})} placeholder="Where does it happen?"/></label>
+              </div>
+              <div className="grid3">
+                <label>Time of day<input value={sceneDraft.timeOfDay} onChange={e => setSceneDraft({...sceneDraft,timeOfDay:e.target.value})} placeholder="Night, dawn…"/></label>
+                <label>Mood<input value={sceneDraft.mood} onChange={e => setSceneDraft({...sceneDraft,mood:e.target.value})} placeholder="Tense, joyful…"/></label>
+                <label>Weather<input value={sceneDraft.weather} onChange={e => setSceneDraft({...sceneDraft,weather:e.target.value})}/></label>
+              </div>
+              <label>Dramatic beat<textarea rows="2" value={sceneDraft.dramaticBeat} onChange={e => setSceneDraft({...sceneDraft,dramaticBeat:e.target.value})} placeholder="What changes emotionally or narratively in this scene?"/></label>
+              <label>Characters<input value={sceneDraft.characters} onChange={e => setSceneDraft({...sceneDraft,characters:e.target.value})} placeholder="Comma-separated character names"/></label>
+              <label>Blocking / geography<textarea rows="2" value={sceneDraft.blocking} onChange={e => setSceneDraft({...sceneDraft,blocking:e.target.value})} placeholder="Where are the characters and how do they move?"/></label>
+              <div className="grid2"><label>Action<textarea rows="3" value={sceneDraft.action} onChange={e => setSceneDraft({...sceneDraft,action:e.target.value})} placeholder="What physically happens?"/></label><label>Dialogue<textarea rows="3" value={sceneDraft.dialogue} onChange={e => setSceneDraft({...sceneDraft,dialogue:e.target.value})} placeholder="Important dialogue or dialogue intent"/></label></div>
+              <label>Props<input value={sceneDraft.props} onChange={e => setSceneDraft({...sceneDraft,props:e.target.value})} placeholder="Comma-separated important props"/></label>
+              <label>Scene description<textarea rows="2" value={sceneDraft.description} onChange={e => setSceneDraft({...sceneDraft,description:e.target.value})}/></label>
+              <button onClick={saveScene}>Save scene plan</button>
+            </div>}
           </div>
           <div>
             <div className="subhead"><strong>Shot list</strong><span className="hint">{filmShots.length} shots</span></div>
