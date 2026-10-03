@@ -21,12 +21,12 @@ const FORMAT_PIPELINES = {
     stages: ['story', 'visual-planning', 'image-generation', 'narration', 'sound-design', 'assembly'],
     requiredAssets: ['script', 'visual-references', 'story-images'],
     taskTemplates: [
-      ['visual-frame', 'Create one illustrative key image for each story beat or visual change.'],
-      ['image-motion', 'Optionally add a controlled pan, zoom or parallax move to selected images.'],
-      ['narration', 'Create narration timed to the visual sequence.'],
-      ['captions', 'Create captions synchronized to narration or dialogue.'],
-      ['sound-design', 'Add ambience, Foley, SFX and music where they support the story.'],
-      ['assembly', 'Assemble images, motion, narration, captions and sound into the final video.']
+      ['image-generation', 'visual-frame', 'Create one illustrative key image for each story beat or visual change.'],
+      ['image-generation', 'image-motion', 'Optionally add a controlled pan, zoom or parallax move to selected images.'],
+      ['narration', 'narration', 'Create narration timed to the visual sequence.'],
+      ['assembly', 'captions', 'Create captions synchronized to narration or dialogue.'],
+      ['sound-design', 'sound-design', 'Add ambience, Foley, SFX and music where they support the story.'],
+      ['assembly', 'assembly', 'Assemble images, motion, narration, captions and sound into the final video.']
     ]
   },
   'motion-comic': {
@@ -34,13 +34,13 @@ const FORMAT_PIPELINES = {
     stages: ['story', 'character-design', 'panel-layout', 'panel-generation', 'motion', 'dialogue', 'sound-design', 'assembly'],
     requiredAssets: ['script', 'character-references', 'panel-references', 'background-assets'],
     taskTemplates: [
-      ['character-sheet', 'Create consistent character sheets, expressions and pose references.'],
-      ['panel', 'Create comic panels that cover the required story beats.'],
-      ['camera-motion', 'Animate panels with controlled pans, zooms, pushes and transitions.'],
+      ['character-design', 'character-sheet', 'Create consistent character sheets, expressions and pose references.'],
+      ['panel-generation', 'panel', 'Create comic panels that cover the required story beats.'],
+      ['motion', 'camera-motion', 'Animate panels with controlled pans, zooms, pushes and transitions.'],
       ['voice', 'dialogue', 'Create character dialogue and place dialogue balloons or subtitle timing.'],
-      ['sfx', 'Create impact and action sound effects synchronized to panel motion.'],
+      ['sound-design', 'sfx', 'Create impact and action sound effects synchronized to panel motion.'],
       ['sound-design', 'music', 'Create or select music cues.'],
-      ['assembly', 'Assemble panels, motion, dialogue, captions and sound into the final video.']
+      ['assembly', 'assembly', 'Assemble panels, motion, dialogue, captions and sound into the final video.']
     ]
   },
   'cinematic': {
@@ -48,15 +48,15 @@ const FORMAT_PIPELINES = {
     stages: ['story', 'world-bible', 'character-bible', 'shot-design', 'reference-generation', 'video-generation', 'voice', 'sound-design', 'editing', 'quality-control'],
     requiredAssets: ['script', 'world-bible', 'character-bible', 'location-references', 'shot-list', 'continuity-state'],
     taskTemplates: [
-      ['world-bible', 'Define locations, rules, props and visual logic that must remain consistent.'],
-      ['character-bible', 'Define character appearance, wardrobe, identity and continuity anchors.'],
-      ['shot-design', 'Convert scenes into deliberate coverage with framing, lens intent, movement and blocking.'],
-      ['reference-generation', 'Create reference images for characters, locations and important props.'],
-      ['video-generation', 'Generate individual shots using provider-neutral video tasks.'],
-      ['voice', 'Create dialogue and narration aligned to the edit.'],
-      ['sound-design', 'Build ambience, Foley, SFX and music around picture.'],
-      ['editing', 'Assemble shots using continuity, pacing and editorial intent.'],
-      ['quality-control', 'Evaluate motion, prompt adherence, identity, temporal consistency and audio.']
+      ['world-bible', 'world-bible', 'Define locations, rules, props and visual logic that must remain consistent.'],
+      ['character-bible', 'character-bible', 'Define character appearance, wardrobe, identity and continuity anchors.'],
+      ['shot-design', 'shot-design', 'Convert scenes into deliberate coverage with framing, lens intent, movement and blocking.'],
+      ['reference-generation', 'reference-generation', 'Create reference images for characters, locations and important props.'],
+      ['video-generation', 'video-generation', 'Generate individual shots using provider-neutral video tasks.'],
+      ['voice', 'voice', 'Create dialogue and narration aligned to the edit.'],
+      ['sound-design', 'sound-design', 'Build ambience, Foley, SFX and music around picture.'],
+      ['editing', 'editing', 'Assemble shots using continuity, pacing and editorial intent.'],
+      ['quality-control', 'quality-control', 'Evaluate motion, prompt adherence, identity, temporal consistency and audio.']
     ]
   },
   'anime': {
@@ -64,15 +64,15 @@ const FORMAT_PIPELINES = {
     stages: ['story', 'character-design', 'key-poses', 'background-design', 'layout', 'animation', 'voice', 'sound-design', 'editing', 'quality-control'],
     requiredAssets: ['script', 'character-sheets', 'expression-sheets', 'pose-references', 'background-designs', 'style-guide'],
     taskTemplates: [
-      ['character-sheet', 'Create reusable character sheets with front, side, expression and wardrobe references.'],
-      ['key-poses', 'Define key poses and acting beats before animation.'],
-      ['background', 'Create reusable backgrounds and environment references.'],
-      ['layout', 'Plan character placement, camera framing and screen direction.'],
-      ['animation', 'Animate character actions and environmental motion while preserving identity.'],
-      ['voice', 'Create dialogue and performance timing for each character.'],
-      ['sound-design', 'Create ambience, Foley, SFX and music appropriate to the sequence.'],
-      ['editing', 'Assemble animated shots and synchronize performance with sound.'],
-      ['quality-control', 'Check character consistency, motion, timing, style and continuity.']
+      ['character-design', 'character-sheet', 'Create reusable character sheets with front, side, expression and wardrobe references.'],
+      ['key-poses', 'key-poses', 'Define key poses and acting beats before animation.'],
+      ['background-design', 'background', 'Create reusable backgrounds and environment references.'],
+      ['layout', 'layout', 'Plan character placement, camera framing and screen direction.'],
+      ['animation', 'animation', 'Animate character actions and environmental motion while preserving identity.'],
+      ['voice', 'voice', 'Create dialogue and performance timing for each character.'],
+      ['sound-design', 'sound-design', 'Create ambience, Foley, SFX and music appropriate to the sequence.'],
+      ['editing', 'editing', 'Assemble animated shots and synchronize performance with sound.'],
+      ['quality-control', 'quality-control', 'Check character consistency, motion, timing, style and continuity.']
     ]
   },
   'documentary': {
@@ -80,15 +80,15 @@ const FORMAT_PIPELINES = {
     stages: ['research', 'story', 'interview', 'archive', 'visual-assembly', 'narration', 'graphics', 'sound-design', 'editing', 'fact-check'],
     requiredAssets: ['research-notes', 'source-material', 'interview-assets', 'archival-assets', 'b-roll', 'graphics'],
     taskTemplates: [
-      ['research', 'Organize claims, source material and evidence before visual production.'],
-      ['interview', 'Prepare interview segments, speakers and timing.'],
-      ['archive', 'Collect photographs, documents, maps or archival footage with provenance metadata.'],
-      ['b-roll', 'Plan real or generated supporting visuals for each narration beat.'],
-      ['graphics', 'Create maps, charts, diagrams and explanatory graphics where useful.'],
-      ['narration', 'Create narration aligned to the evidence and edit structure.'],
-      ['sound-design', 'Add ambience, SFX and music without obscuring speech.'],
-      ['editing', 'Assemble interviews, archive, b-roll, graphics and narration.'],
-      ['fact-check', 'Track factual claims and their supporting sources before release.']
+      ['research', 'research', 'Organize claims, source material and evidence before visual production.'],
+      ['interview', 'interview', 'Prepare interview segments, speakers and timing.'],
+      ['archive', 'archive', 'Collect photographs, documents, maps or archival footage with provenance metadata.'],
+      ['visual-assembly', 'b-roll', 'Plan real or generated supporting visuals for each narration beat.'],
+      ['graphics', 'graphics', 'Create maps, charts, diagrams and explanatory graphics where useful.'],
+      ['narration', 'narration', 'Create narration aligned to the evidence and edit structure.'],
+      ['sound-design', 'sound-design', 'Add ambience, SFX and music without obscuring speech.'],
+      ['editing', 'editing', 'Assemble interviews, archive, b-roll, graphics and narration.'],
+      ['fact-check', 'fact-check', 'Track factual claims and their supporting sources before release.']
     ]
   },
   'explainer': {
@@ -96,14 +96,14 @@ const FORMAT_PIPELINES = {
     stages: ['problem-definition', 'script', 'visual-plan', 'graphics', 'screen-visuals', 'narration', 'captions', 'sound-design', 'assembly'],
     requiredAssets: ['script', 'visual-outline', 'diagrams', 'screen-visuals', 'brand-or-style-guide'],
     taskTemplates: [
-      ['visual-plan', 'Map every narration beat to the visual that should explain it.'],
-      ['diagram', 'Create diagrams, charts or visual metaphors for concepts that need explanation.'],
-      ['screen-visual', 'Capture or create interface/product visuals when the explanation requires them.'],
-      ['motion-graphics', 'Animate key labels, diagrams and transitions without distracting from the explanation.'],
-      ['narration', 'Create clear narration with timing matched to visual explanation.'],
-      ['captions', 'Create synchronized captions for accessibility and silent viewing.'],
-      ['sound-design', 'Add restrained music, ambience and SFX.'],
-      ['assembly', 'Assemble narration, visuals, graphics, captions and sound into the final video.']
+      ['visual-plan', 'visual-plan', 'Map every narration beat to the visual that should explain it.'],
+      ['graphics', 'diagram', 'Create diagrams, charts or visual metaphors for concepts that need explanation.'],
+      ['screen-visuals', 'screen-visual', 'Capture or create interface/product visuals when the explanation requires them.'],
+      ['visual-plan', 'motion-graphics', 'Animate key labels, diagrams and transitions without distracting from the explanation.'],
+      ['narration', 'narration', 'Create clear narration with timing matched to visual explanation.'],
+      ['captions', 'captions', 'Create synchronized captions for accessibility and silent viewing.'],
+      ['sound-design', 'sound-design', 'Add restrained music, ambience and SFX.'],
+      ['assembly', 'assembly', 'Assemble narration, visuals, graphics, captions and sound into the final video.']
     ]
   }
 };
