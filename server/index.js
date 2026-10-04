@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import crypto from 'node:crypto';
 import { Client, handle_file } from '@gradio/client';
 import { findGeneration } from './continuity.js';
 import { generateWithLuma } from './luma.js';
@@ -26,8 +27,8 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase } from './database.js';
-import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, createUser, getUserByEmail, getUserById } from './database.js';
+import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
 
@@ -77,14 +78,53 @@ app.get('/api/health', async (req, res) => {
   res.json({ ok: true, service: 'cinematic-agent-v1', database });
 });
 
-app.get('/api/auth/status', (req, res) => res.json({ ...getPublicAuthStatus(), authenticated: isAuthenticated(req) }));
+app.get('/api/auth/status', async (req, res) => {
+  const userId = getSessionUserId(req);
+  const user = userId && userId !== 'admin' ? await getUserById(userId) : (userId === 'admin' ? { id: 'admin', email: null, displayName: 'Administrator' } : null);
+  res.json({ ...getPublicAuthStatus(), registration: Boolean(process.env.DATABASE_URL), authenticated: isAuthenticated(req), user });
+});
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return salt + ':' + hash;
+}
+function verifyPassword(password, stored) {
+  const [salt, expected] = String(stored || '').split(':');
+  if (!salt || !expected) return false;
+  const actual = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+}
+
+app.post('/api/auth/register', authRateLimit, async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const displayName = String(req.body?.displayName || '').trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'A valid email address is required.' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must contain at least 8 characters.' });
+    const existing = await getUserByEmail(email);
+    if (existing) return res.status(409).json({ error: 'An account with that email already exists.' });
+    const user = await createUser({ email, passwordHash: hashPassword(password), displayName });
+    setSessionCookie(res, user.id);
+    res.status(201).json({ authenticated: true, user });
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Could not create account.' });
+  }
+});
+
 app.post('/api/auth/login', authRateLimit, (req, res) => {
-  if (!process.env.APP_AUTH_PASSWORD) return res.status(503).json({ error: 'Authentication is not configured.' });
+  const email = String(req.body?.email || '').trim().toLowerCase();
   const supplied = String(req.body?.password || '');
+  if (email && process.env.DATABASE_URL) {
+    const user = await getUserByEmail(email);
+    if (!user || !verifyPassword(supplied, user.password_hash)) return res.status(401).json({ error: 'Invalid email or password.' });
+    setSessionCookie(res, user.id);
+    return res.json({ authenticated: true, user: { id: user.id, email: user.email, displayName: user.display_name } });
+  }
+  if (!process.env.APP_AUTH_PASSWORD) return res.status(503).json({ error: 'Authentication is not configured.' });
   const expected = String(process.env.APP_AUTH_PASSWORD);
   if (!secretsMatch(supplied, expected)) return res.status(401).json({ error: 'Invalid password.' });
-  setSessionCookie(res);
-  res.json({ authenticated: true });
+  setSessionCookie(res, 'admin');
+  res.json({ authenticated: true, user: { id: 'admin', email: null, displayName: 'Administrator' } });
 });
 app.post('/api/auth/logout', (req, res) => { clearSessionCookie(res); res.json({ authenticated: false }); });
 app.use('/api', (req, res, next) => {
