@@ -334,9 +334,15 @@ function App() {
   }
 
   async function loadFilmProjects() {
-    const r = await apiFetch( '/film/projects');
-    const data = await r.json();
-    setFilmProjects(data.projects || []);
+    try {
+      const r = await apiFetch('/film/projects');
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not load film projects.');
+      setFilmProjects(data.projects || []);
+    } catch (e) {
+      setStatus(e.message || 'Could not load film projects');
+      notify(e.message || 'Could not load film projects', 'error');
+    }
   }
 
   async function createFilmProject() {
