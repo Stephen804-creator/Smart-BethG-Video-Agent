@@ -707,7 +707,7 @@ function App() {
               ['audio','Volume','Audio'],
               ['layers','Layers','Layers'],
               ['timing','Timer','Timing']
-            ].map(([id,icon,label]) => <button key={id} className={productionTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setProductionTool(productionTool === id ? '' : id)} title={label + ' tools'}><span>{icon}</span><small>{label}</small></button>)}
+            ].map(([id,icon,label]) => <button key={id} className={productionTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setProductionTool(productionTool === id ? '' : id)} title={label + ' tools'}><span><Icon name={icon} size={16}/></span><small>{label}</small></button>)}
           </div>
 
           {productionTool === 'shot' && <div className="production-tool-panel">
@@ -805,13 +805,13 @@ function App() {
           </div>
           <div className="workspace-tool-icons">
             {(filmTab === 'story' ? [
-              ['premise','📝','Premise'],['characters','👤','Characters'],['world','🌍','World'],['rules','📜','Rules']
+              ['premise','FileText','Premise'],['characters','User','Characters'],['world','Globe','World'],['rules','ScrollText','Rules']
             ] : filmTab === 'shots' ? [
               ['scene','Clapperboard','Scene'],['blocking','Move','Blocking'],['coverage','Camera','Coverage'],['dialogue','Message','Dialogue'],['next','ArrowRight','Next shot']
             ] : filmTab === 'takes' ? [
               ['select','Check','Select'],['camera-log','Camera','Camera log'],['compare','Scale','Compare'],['notes','FileText','Notes']
             ] : filmTab === 'continuity' ? [
-              ['characters-state','👤','Characters'],['props-state','📦','Props'],['direction','↔️','Direction'],['lighting-state','💡','Lighting'],['qc','✓','QC']
+              ['characters-state','User','Characters'],['props-state','Box','Props'],['direction','ArrowLeftRight','Direction'],['lighting-state','Lightbulb','Lighting'],['qc','Check','QC']
             ] : filmTab === 'assets' ? [
               ['import','Upload','Import'],['organize','FolderOpen','Organize'],['inspect','Search','Inspect'],['attach','Link','Attach'],['integrity','Shield','Integrity']
             ] : [
