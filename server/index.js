@@ -223,6 +223,20 @@ async function finalizeGeneratedMedia({ record, task, result, worker }) {
   return { evaluation, database, generationId: record.id };
 }
 
+function estimateGenerationCost({ provider, duration }) {
+  const seconds = Number(duration || 0);
+  if (provider === 'huggingface') return { estimatedUsd: 0, source: 'public-free-quota' };
+  if (provider === 'luma') {
+    const rate = Number(process.env.LUMA_COST_USD_PER_SECOND || 0);
+    return { estimatedUsd: rate > 0 ? Number((seconds * rate).toFixed(6)) : null, source: rate > 0 ? 'configured-rate' : 'provider-rate-not-configured' };
+  }
+  if (provider === 'comfyui') {
+    const hourly = Number(process.env.COMFYUI_COST_USD_PER_HOUR || 0);
+    return { estimatedUsd: hourly > 0 ? Number((seconds / 3600 * hourly).toFixed(6)) : null, source: hourly > 0 ? 'configured-rate' : 'user-controlled-runtime' };
+  }
+  return { estimatedUsd: null, source: 'unknown' };
+}
+
 function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
   const controls = [
     `Framing: ${framing || 'medium shot'}.`,
@@ -300,7 +314,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   const filepath = path.join(outputDir, filename);
   fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
   const actualDuration = await probeDuration(filepath);
-  const record = { id, createdAt: new Date().toISOString(), provider: 'huggingface', space, model: 'LTX Video 0.9.8 13B Distilled', mode, prompt, generatedPrompt: shotPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: Number(duration), duration: actualDuration ?? Number(duration), durationMeasured: actualDuration !== null, ratio, height: dimensions.height, width: dimensions.width, seed, output: `/output/${filename}` };
+  const record = { id, createdAt: new Date().toISOString(), provider: 'huggingface', space, model: 'LTX Video 0.9.8 13B Distilled', mode, prompt, generatedPrompt: shotPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: Number(duration), duration: actualDuration ?? Number(duration), estimatedCostUsd: estimateGenerationCost({ provider: 'huggingface', duration: Number(duration) }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'huggingface', duration: Number(duration) }).source, durationMeasured: actualDuration !== null, ratio, height: dimensions.height, width: dimensions.width, seed, output: `/output/${filename}` };
   const task = normalizeMediaTask({
     operation: mode === 'video-to-video' ? 'video-to-video' : 'text-to-video',
     prompt,
@@ -338,7 +352,7 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   const filepath = path.join(outputDir, filename);
   fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
   const actualDuration = await probeDuration(filepath);
-  const record = { id, createdAt: new Date().toISOString(), provider: 'luma', model: generation.model || model, mode: 'text-to-video', prompt, generatedPrompt: finalPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: null, duration: actualDuration, durationMeasured: actualDuration !== null, ratio, width: null, height: null, providerGenerationId: generation.id, output: `/output/${filename}` };
+  const record = { id, createdAt: new Date().toISOString(), provider: 'luma', model: generation.model || model, mode: 'text-to-video', prompt, generatedPrompt: finalPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: null, duration: actualDuration, estimatedCostUsd: estimateGenerationCost({ provider: 'luma', duration: actualDuration || 5 }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'luma', duration: actualDuration || 5 }).source, durationMeasured: actualDuration !== null, ratio, width: null, height: null, providerGenerationId: generation.id, output: `/output/${filename}` };
   const task = normalizeMediaTask({
     operation: 'text-to-video',
     prompt,
@@ -440,7 +454,7 @@ async function executeCanonicalGeneration(input = {}) {
     const safeComfyUrl = await assertSafeComfyUrl(settings.comfyUrl);
     const worker = await createComfyWorker({ baseUrl: safeComfyUrl, workflowPath: comfyWorkflowPath, outputDir });
     const generated = await worker.execute(task);
-    const record = { id: 'gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), ownerUserId: input.ownerUserId || null, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source };
+    const record = { id: 'gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), ownerUserId: input.ownerUserId || null, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source, estimatedCostUsd: estimateGenerationCost({ provider: 'comfyui', duration: task.requirements.duration }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'comfyui', duration: task.requirements.duration }).source };
     const qualityControl = await finalizeGeneratedMedia({ record, task, result: generated, worker: { id: worker.id, provider: 'comfyui', runtime: worker.runtime } });
     return linkGenerationToFilmShot(input, { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database });
   }
