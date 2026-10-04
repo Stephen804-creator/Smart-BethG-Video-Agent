@@ -7,6 +7,7 @@ import { chooseProvider } from '../router/scorer.js';
 import { createDatasetRecord, appendDatasetRecord } from '../dataset/manifest.js';
 import { evaluateVideoFile } from '../evaluation/video-qc.js';
 import { saveGenerationToDatabase } from '../database.js';
+import { assertSafeComfyUrl } from '../security/outbound.js';
 
 function now() { return new Date().toISOString(); }
 
@@ -38,8 +39,9 @@ export function createProductionRunner({ outputDir, jobsFile, settings, workflow
     const projectId = graph.project_id || 'project';
     const currentSettings = settings();
     const providers = listProviders(currentSettings);
+    const safeComfyUrl = await assertSafeComfyUrl(currentSettings.comfyUrl);
     const comfy = await createComfyWorker({
-      baseUrl: currentSettings.comfyUrl,
+      baseUrl: safeComfyUrl,
       workflowPath,
       outputDir
     });
