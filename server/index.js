@@ -156,6 +156,18 @@ app.get('/api/jobs/:jobId', (req, res) => {
   if (!job) return res.status(404).json({ error: 'Job not found.' });
   res.json({ job });
 });
+app.get('/api/jobs/:jobId/cost', (req, res) => {
+  const job = generationQueue.ownedGet(req.params.jobId, getSessionUserId(req));
+  if (!job) return res.status(404).json({ error: 'Job not found.' });
+  const generation = job.result?.generation || null;
+  res.json({
+    jobId: job.id,
+    estimatedCostUsd: generation?.estimatedCostUsd ?? generation?.estimated_cost_usd ?? null,
+    actualCostUsd: generation?.actualCostUsd ?? generation?.actual_cost_usd ?? null,
+    provider: generation?.provider || null
+  });
+});
+
 app.post('/api/jobs/:jobId/cancel', (req, res) => {
   const job = generationQueue.ownedCancel(req.params.jobId, getSessionUserId(req));
   if (!job) return res.status(404).json({ error: 'Job not found.' });
