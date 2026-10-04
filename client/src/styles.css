@@ -2097,3 +2097,9 @@ html[data-density="compact"] .nav-item {
 .panel input, .panel textarea, .panel select {
   color: var(--text);
 }
+
+.retry-banner { position: fixed; right: 22px; bottom: 22px; z-index: 101; display: flex; align-items: center; gap: 12px; padding: 10px 13px; border: 1px solid var(--border-strong); border-radius: 10px; background: #141a21; color: var(--text-muted); box-shadow: 0 15px 40px rgba(0,0,0,.35); font-size: 12px; }
+.generation-overlay-copy { min-width: 0; flex: 1; }
+.secondary-button { min-height: 32px; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-3); color: var(--text); cursor: pointer; }
+.secondary-button:hover { border-color: var(--accent); }
+@media (max-width: 600px) { .retry-banner { right: 12px; bottom: 74px; } }
