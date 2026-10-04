@@ -97,6 +97,20 @@ app.get('/api/jobs/:jobId', (req, res) => {
   if (!job) return res.status(404).json({ error: 'Job not found.' });
   res.json({ job });
 });
+app.post('/api/jobs/:jobId/cancel', (req, res) => {
+  const job = generationQueue.cancel(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found.' });
+  res.json({ job });
+});
+app.post('/api/jobs/:jobId/retry', (req, res) => {
+  try {
+    const job = generationQueue.retry(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found.' });
+    res.status(202).json({ status: 'Queued', job });
+  } catch (error) {
+    res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not retry job.' });
+  }
+});
 
 function readSettings() {
   return {
