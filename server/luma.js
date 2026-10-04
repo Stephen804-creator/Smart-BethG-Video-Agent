@@ -43,7 +43,7 @@ async function lumaRequest(apiKey, url, options = {}) {
 }
 
 export async function generateWithLuma({ apiKey, prompt, ratio, model = 'ray-flash-2' }) {
-  if (!apiKey) throw new Error('Luma API key is not configured. Add it in Settings.');
+  if (!apiKey) throw new Error('Luma API key is not configured on the server. Set LUMAAI_API_KEY in the deployment environment.');
 
   const payload = {
     generation_type: 'video',
