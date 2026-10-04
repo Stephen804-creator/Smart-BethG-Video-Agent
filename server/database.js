@@ -27,8 +27,17 @@ export async function initDatabase() {
   if (!db) return { enabled: false };
 
   await db.query(`
+    CREATE TABLE IF NOT EXISTS app_users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS media_projects (
       id TEXT PRIMARY KEY,
+      owner_user_id TEXT REFERENCES app_users(id),
       name TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -90,6 +99,7 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_media_generations_project ON media_generations(project_id);
     CREATE INDEX IF NOT EXISTS idx_media_generations_shot ON media_generations(shot_id);
     CREATE INDEX IF NOT EXISTS idx_media_generations_created ON media_generations(created_at DESC);
+    ALTER TABLE media_projects ADD COLUMN IF NOT EXISTS owner_user_id TEXT REFERENCES app_users(id);
     ALTER TABLE media_projects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS dataset_id TEXT;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC;
@@ -319,4 +329,30 @@ export async function listGenerationsFromDatabase(limit = 100) {
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
   const result = await db.query('SELECT * FROM media_generations ORDER BY created_at DESC LIMIT $1', [safeLimit]);
   return result.rows;
+}
+
+
+export async function createUser({ email, passwordHash, displayName = '' }) {
+  const db = getPool();
+  if (!db) throw new Error('Database is not configured.');
+  const id = 'user-' + crypto.randomUUID();
+  const result = await db.query(
+    'INSERT INTO app_users (id,email,password_hash,display_name) VALUES ($1,$2,$3,$4) RETURNING id,email,display_name,created_at',
+    [id, String(email).trim().toLowerCase(), passwordHash, String(displayName).trim()]
+  );
+  return result.rows[0];
+}
+
+export async function getUserByEmail(email) {
+  const db = getPool();
+  if (!db) return null;
+  const result = await db.query('SELECT * FROM app_users WHERE email=$1 LIMIT 1', [String(email).trim().toLowerCase()]);
+  return result.rows[0] || null;
+}
+
+export async function getUserById(id) {
+  const db = getPool();
+  if (!db || !id) return null;
+  const result = await db.query('SELECT id,email,display_name,created_at FROM app_users WHERE id=$1 LIMIT 1', [id]);
+  return result.rows[0] || null;
 }
