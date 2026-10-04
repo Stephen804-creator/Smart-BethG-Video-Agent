@@ -2103,3 +2103,9 @@ html[data-density="compact"] .nav-item {
 .secondary-button { min-height: 32px; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-3); color: var(--text); cursor: pointer; }
 .secondary-button:hover { border-color: var(--accent); }
 @media (max-width: 600px) { .retry-banner { right: 12px; bottom: 74px; } }
+
+.timeline-editor{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.timeline-track{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 14px;scrollbar-width:thin}
+.timeline-clip{min-width:150px;padding:10px;display:grid;gap:4px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text);text-align:left;cursor:pointer}
+.timeline-clip:hover,.timeline-clip:focus-visible{border-color:var(--accent);background:var(--surface-3)}
+.timeline-index{color:var(--text-subtle);font-size:10px}.timeline-clip b{font-size:12px}.timeline-clip small{color:var(--text-muted);min-height:28px}.timeline-clip em{color:var(--accent);font-size:10px;font-style:normal}
