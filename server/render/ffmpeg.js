@@ -98,3 +98,36 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
     ]
   };
 }
+
+
+export async function renderTimeline({ clips = [], outputDir }) {
+  if (!Array.isArray(clips) || !clips.length) throw new Error('A timeline requires at least one clip.');
+  fs.mkdirSync(outputDir, { recursive: true });
+  const rendered = [];
+  for (const clip of clips) {
+    const item = await renderShot({
+      inputPath: clip.inputPath,
+      outputDir,
+      edit: clip.edit || {},
+      effects: clip.effects || {},
+      audioMix: clip.audioMix || {}
+    });
+    rendered.push(item);
+  }
+  const listFile = path.join(outputDir, 'timeline-' + crypto.randomUUID() + '.txt');
+  fs.writeFileSync(listFile, rendered.map(item => "file '" + item.outputPath.replace(/'/g, "'\\''") + "'").join('\n'));
+  const filename = 'export-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8) + '.mp4';
+  const outputPath = path.join(outputDir, filename);
+  try {
+    await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', outputPath]);
+  } finally {
+    try { fs.unlinkSync(listFile); } catch {}
+  }
+  return {
+    filename,
+    outputPath,
+    output: '/output/' + filename,
+    clips: rendered,
+    duration: rendered.reduce((sum, item) => sum + Number(item.applied?.trimOut > item.applied?.trimIn ? item.applied.trimOut - item.applied.trimIn : 0), 0)
+  };
+}
