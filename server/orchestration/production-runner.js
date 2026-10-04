@@ -11,7 +11,7 @@ import { assertSafeComfyUrl } from '../security/outbound.js';
 
 function now() { return new Date().toISOString(); }
 
-export function createProductionRunner({ outputDir, jobsFile, settings, workflowPath }) {
+export function createProductionRunner({ outputDir, jobsFile, settings, workflowPath, executeTask = null }) {
   fs.mkdirSync(path.dirname(jobsFile), { recursive: true });
   const datasetFile = path.join(path.dirname(jobsFile), 'dataset-manifest.jsonl');
 
@@ -89,6 +89,49 @@ export function createProductionRunner({ outputDir, jobsFile, settings, workflow
         job.status = 'blocked';
         job.error = 'No installed video worker supports this operation.';
         execution.jobs.push(save(job));
+        continue;
+      }
+
+      const task = normalizeMediaTask({
+        taskId,
+        domain: 'video',
+        operation,
+        purpose: node.purpose || node.stage,
+        prompt: node.prompt || '',
+        negativePrompt: node.negativePrompt || '',
+        input: node.input || null,
+        requirements: node.requirements || {},
+        constraints: { allowPaid: options.allowPaid === true, preferLocal: options.preferLocal !== false, maxCost: options.maxCost ?? null },
+        continuity: node.continuity || {},
+        metadata: { ...(node.metadata || {}), projectId, sceneId: job.scene_id, beatId: job.beat_id, shotId: job.shot_id, graphNodeId: node.id }
+      });
+      validateMediaTask(task);
+
+      if (executeTask) {
+        try {
+          job.status = 'running';
+          job.started_at = now();
+          save(job);
+          const result = await executeTask({
+            ...task,
+            providerId: options.providerId || 'auto',
+            allowPaid: options.allowPaid === true,
+            projectId,
+            sceneId: job.scene_id,
+            shotId: job.shot_id
+          });
+          job.status = 'completed';
+          job.completed_at = now();
+          job.output = result?.videoUrl || result?.generation?.output || result;
+          job.evaluation = result?.qualityControl || null;
+          save(job);
+        } catch (error) {
+          job.status = 'failed';
+          job.completed_at = now();
+          job.error = error?.message || 'Canonical media pipeline failed.';
+          save(job);
+        }
+        execution.jobs.push(job);
         continue;
       }
 
