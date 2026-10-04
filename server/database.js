@@ -104,6 +104,21 @@ export async function initDatabase() {
 export async function saveGenerationToDatabase(record) {
   const db = getPool();
   if (!db) return false;
+  const task = record.task || {};
+  const execution = record.execution || {
+    provider: record.provider || null,
+    worker_id: record.workerId || null,
+    model: record.model || null,
+    workflow: record.workflow || null
+  };
+  const creativeInput = record.creative_input || {
+    prompt: record.prompt || '',
+    requirements: record.requirements || {}
+  };
+  const output = record.output || {};
+  const evaluation = record.evaluation || record.qualityControl || {};
+  const id = record.id || record.dataset_id;
+  if (!id) throw new Error('A generation record requires an id.');
 
   await db.query(
     `INSERT INTO media_generations
@@ -115,23 +130,13 @@ export async function saveGenerationToDatabase(record) {
        evaluation=EXCLUDED.evaluation,
        dataset_id=COALESCE(EXCLUDED.dataset_id, media_generations.dataset_id)`,
     [
-      record.id || record.dataset_id || null,
-      record.project || null,
-      record.scene || null,
-      record.shot || null,
-      record.task?.domain || 'video',
-      record.task?.operation || 'text-to-video',
-      record.execution?.provider || null,
-      record.execution?.worker_id || null,
-      record.execution?.model || null,
-      record.execution?.workflow || null,
-      record.creative_input?.prompt || '',
-      JSON.stringify(record.creative_input?.requirements || {}),
-      JSON.stringify(record.production?.sound || {}),
-      JSON.stringify(record.output || {}),
-      JSON.stringify(record.execution || {}),
-      JSON.stringify(record.evaluation || {}),
-      JSON.stringify(record.licensing || {}),
+      id, record.project || record.projectId || null, record.scene || record.sceneId || null, record.shot || record.shotId || null,
+      task.domain || record.domain || 'video', task.operation || record.operation || 'text-to-video',
+      execution.provider || record.provider || null, execution.worker_id || record.workerId || null,
+      execution.model || record.model || null, execution.workflow || record.workflow || null,
+      creativeInput.prompt || record.prompt || '', JSON.stringify(creativeInput.requirements || record.requirements || {}),
+      JSON.stringify(record.production?.sound || record.soundPlan || {}), JSON.stringify(output),
+      JSON.stringify(execution), JSON.stringify(evaluation), JSON.stringify(record.licensing || {}),
       record.dataset_id || null
     ]
   );
