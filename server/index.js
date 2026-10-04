@@ -726,7 +726,8 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
         outputDir,
         jobsFile,
         settings: readSettings,
-        workflowPath: comfyWorkflowPath
+        workflowPath: comfyWorkflowPath,
+        executeTask: executeCanonicalGeneration
       });
       return runner.execute(graph, {
         allowPaid: req.body?.allowPaid === true,
