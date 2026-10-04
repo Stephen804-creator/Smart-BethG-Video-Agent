@@ -798,7 +798,8 @@ app.post('/api/generate', generationRateLimit, async (req, res) => {
         });
         validateMediaTask(task);
         const settings = readSettings();
-        const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
+        const safeComfyUrl = await assertSafeComfyUrl(settings.comfyUrl);
+        const worker = await createComfyWorker({ baseUrl: safeComfyUrl, workflowPath: comfyWorkflowPath, outputDir });
         const generated = await worker.execute(task);
         const record = {
           id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
