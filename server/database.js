@@ -110,7 +110,7 @@ export async function saveGenerationToDatabase(record) {
        execution=EXCLUDED.execution,
        evaluation=EXCLUDED.evaluation`,
     [
-      record.id,
+      record.id || record.dataset_id,
       record.project || null,
       record.scene || null,
       record.shot || null,
@@ -134,7 +134,7 @@ export async function saveGenerationToDatabase(record) {
     await db.query(
       `INSERT INTO media_knowledge_refs (generation_id, knowledge_id)
        VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-      [record.id, id]
+      [record.id || record.dataset_id, id]
     );
   }
 
