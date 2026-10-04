@@ -40,20 +40,23 @@ function parseCookies(header = '') {
   }).filter(Boolean));
 }
 
-export function createSessionCookie() {
+export function createSessionCookie(userId = 'admin') {
   const expires = Date.now() + SESSION_TTL_MS;
-  const payload = String(expires);
+  const payload = String(userId) + ':' + String(expires);
   return payload + '.' + sign(payload);
 }
 
 export function verifySessionCookie(cookie) {
-  if (!cookie) return false;
-  const [expires, signature] = String(cookie).split('.');
-  if (!expires || !signature || Number(expires) < Date.now()) return false;
-  const expected = Buffer.from(sign(expires));
+  if (!cookie) return null;
+  const [payload, signature] = String(cookie).split('.');
+  const separator = String(payload).lastIndexOf(':');
+  const userId = separator > 0 ? payload.slice(0, separator) : 'admin';
+  const expires = separator > 0 ? payload.slice(separator + 1) : payload;
+  if (!expires || !signature || Number(expires) < Date.now()) return null;
+  const expected = Buffer.from(sign(payload));
   const actual = Buffer.from(signature);
   if (expected.length !== actual.length) return false;
-  return crypto.timingSafeEqual(expected, actual);
+  return crypto.timingSafeEqual(expected, actual) ? { userId, expires: Number(expires) } : null;
 }
 
 export function isAuthenticated(req) {
@@ -66,12 +69,18 @@ export function isAuthenticated(req) {
     }
   }
   const cookies = parseCookies(req.headers.cookie || '');
-  return verifySessionCookie(cookies[SESSION_COOKIE]);
+  return Boolean(verifySessionCookie(cookies[SESSION_COOKIE]));
 }
 
-export function setSessionCookie(res) {
+export function getSessionUserId(req) {
+  const cookies = parseCookies(req.headers.cookie || '');
+  const session = verifySessionCookie(cookies[SESSION_COOKIE]);
+  return session?.userId || null;
+}
+
+export function setSessionCookie(res, userId = 'admin') {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(createSessionCookie())}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure}`);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(createSessionCookie(userId))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure}`);
 }
 
 export function clearSessionCookie(res) {
