@@ -30,6 +30,7 @@ import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
+import { renderShot } from './render/ffmpeg.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -447,6 +448,34 @@ app.post('/api/film/projects/:projectId/assets', (req, res) => {
   const asset = filmStore.addAsset(req.params.projectId, req.body || {});
   if (!asset) return res.status(404).json({ error: 'Film project not found.' });
   res.status(201).json({ asset });
+});
+
+app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) => {
+  try {
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Film project not found.' });
+    const shot = (project.shots || []).find(item => item.id === req.params.shotId);
+    if (!shot) return res.status(404).json({ error: 'Shot not found.' });
+
+    const selectedTake = (project.takes || []).find(take => take.id === shot.selectedTakeId);
+    const requestedAssetId = req.body?.assetId || selectedTake?.assetId;
+    const asset = requestedAssetId ? (project.assets || []).find(item => item.id === requestedAssetId) : null;
+    if (!asset?.filename) return res.status(400).json({ error: 'Select a take with an imported media asset before rendering.' });
+
+    const inputPath = path.resolve(assetDir, path.basename(asset.filename));
+    if (!inputPath.startsWith(path.resolve(assetDir) + path.sep) || !fs.existsSync(inputPath)) return res.status(404).json({ error: 'Source media file is unavailable.' });
+
+    const rendered = await renderShot({ inputPath, outputDir, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
+    const outputAsset = filmStore.addAsset(req.params.projectId, {
+      name: 'Rendered Shot ' + shot.number, filename: rendered.filename, sourceType: 'rendered', uri: rendered.output,
+      sceneId: shot.sceneId, shotId: shot.id, mimeType: 'video/mp4',
+      notes: JSON.stringify({ sourceAssetId: asset.id, applied: rendered.applied, limitations: rendered.limitations })
+    });
+    const evaluation = await evaluateVideoFile(rendered.outputPath, { frameOutputRoot: path.join(dataDir, 'evaluation-frames') });
+    res.status(201).json({ asset: outputAsset, render: rendered, evaluation });
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Could not render shot.' });
+  }
 });
 
 app.post('/api/film/projects/:projectId/continuity', (req, res) => {
