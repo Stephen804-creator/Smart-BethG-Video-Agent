@@ -558,7 +558,7 @@ app.post('/api/film/projects/:projectId/import-generation', async (req, res) => 
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
     const generationId = String(req.body?.generationId || '');
     if (!generationId) return res.status(400).json({ error: 'generationId is required.' });
-    const generation = await getGenerationFromDatabase(generationId);
+    const generation = await getGenerationFromDatabase(generationId, getSessionUserId(req));
     if (!generation) return res.status(404).json({ error: 'Generation record not found.' });
     const output = generation.output?.asset || generation.output?.uri || generation.output?.output || generation.output?.videoUrl || generation.output;
     if (!output) return res.status(409).json({ error: 'This generation has no media output to import.' });
