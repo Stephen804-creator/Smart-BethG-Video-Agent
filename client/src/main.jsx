@@ -612,7 +612,7 @@ function App() {
       </div>
       <div className="dashboard-grid">
         <div className="dashboard-card dashboard-new">
-          <div className="dashboard-icon">＋</div>
+          <div className="dashboard-icon"><Icon name="Plus" size={20}/></div>
           <div><strong>Start a film project</strong><span>Open the full production workspace for scenes, shots, takes, assets and continuity.</span></div>
           <button onClick={() => { setFilmMode(true); setFilmProject(null); setFilmProjectId(''); }}>Create / open production</button>
         </div>
@@ -655,7 +655,7 @@ function App() {
 
     {showWorkspaceMenu && filmMode && <section className="panel film-assistant">
       <div className="section-head">
-        <div><h2>🎥 Director Assistant</h2><span className="hint">Use normal filmmaking language. The agent turns your idea into scenes, shots, continuity and production tasks.</span></div>
+        <div><h2><Icon name="WandSparkles" size={18}/> Director Assistant</h2><span className="hint">Use normal filmmaking language. The agent turns your idea into scenes, shots, continuity and production tasks.</span></div>
         <span className="tag">FILM MODE</span>
       </div>
       <label>What are you making?
@@ -672,7 +672,7 @@ function App() {
 
     {filmMode && <section className="panel film-workspace">
       <div className="section-head">
-        <div><h2>🎬 Normal Film Production Workspace</h2><span className="hint">Plan the film, record real camera takes, track continuity, then bring approved media into the edit.</span></div>
+        <div><h2><Icon name="Clapperboard" size={18}/> Normal Film Production Workspace</h2><span className="hint">Plan the film, record real camera takes, track continuity, then bring approved media into the edit.</span></div>
         <span className="tag">PRODUCTION</span>
       </div>
       <div className="film-project-bar">
@@ -700,13 +700,13 @@ function App() {
           </div>
           <div className="production-tool-icons">
             {[
-              ['shot','🎞️','Shot'],
-              ['camera','📷','Camera'],
-              ['edit','✂️','Edit'],
-              ['effects','✨','Effects'],
-              ['audio','🔊','Audio'],
-              ['layers','🖼️','Layers'],
-              ['timing','⏱️','Timing']
+              ['shot','Clapperboard','Shot'],
+              ['camera','Camera','Camera'],
+              ['edit','Scissors','Edit'],
+              ['effects','Sparkles','Effects'],
+              ['audio','Volume','Audio'],
+              ['layers','Layers','Layers'],
+              ['timing','Timer','Timing']
             ].map(([id,icon,label]) => <button key={id} className={productionTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setProductionTool(productionTool === id ? '' : id)} title={label + ' tools'}><span>{icon}</span><small>{label}</small></button>)}
           </div>
 
@@ -1067,7 +1067,7 @@ function App() {
         <div className="search-toolbar">
           <button type="button" className={showGenerationControls ? 'control-icon active' : 'control-icon'} onClick={() => setShowGenerationControls(!showGenerationControls)} title="Generation controls">☷</button>
           <span className="control-summary">{duration}s · {ratio} · {framing}</span>
-          <div className="provider-dropdown"><span className="provider-icon">⚡</span><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Auto · route automatically</option>{providers.filter(p => p.id !== 'comfyui' || p.configured).map(p => <option key={p.id} value={p.id}>{p.name}{p.configured ? '' : ' · unavailable'}</option>)}</select></div>
+          <div className="provider-dropdown"><span className="provider-icon"><Icon name="Zap" size={13}/></span><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Auto · route automatically</option>{providers.filter(p => p.id !== 'comfyui' || p.configured).map(p => <option key={p.id} value={p.id}>{p.name}{p.configured ? '' : ' · unavailable'}</option>)}</select></div>
         </div>
         {showGenerationControls && <div className="generation-controls-panel">
           <label>Duration<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value="2">2 seconds</option><option value="4">4 seconds</option><option value="6">6 seconds</option><option value="8">8 seconds</option></select></label>
@@ -1083,7 +1083,7 @@ function App() {
 
       <section className="panel preview">
         <div className="section-head"><h2>Result</h2>{result && <span className="tag">{result.provider}</span>}</div>
-        {!result ? <div className="empty"><div className="play">▶</div><strong>Your generated shot will appear here</strong><span>Choose LTX or Luma as the active generation engine.</span></div> : <div className="result">
+        {!result ? <div className="empty"><div className="play"><Icon name="Play" size={20}/></div><strong>Your generated shot will appear here</strong><span>Choose LTX or Luma as the active generation engine.</span></div> : <div className="result">
           <div className="resultbox">{result.videoUrl ? <video src={result.videoUrl} controls playsInline/> : <div><strong>{result.message || 'No video returned'}</strong><small>{result.detail || ''}</small></div>}</div>
           {result.generation && <div className="meta"><span>{result.generation.model}</span><span>{result.generation.mode}</span>{result.generation.duration != null && <span>{result.generation.duration}s</span>}{result.generation.width && <span>{result.generation.width}×{result.generation.height}</span>}</div>}
           <div className="actions">
