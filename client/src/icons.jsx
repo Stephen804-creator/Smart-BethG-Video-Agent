@@ -1,6 +1,8 @@
 import React from 'react';
 
 const paths = {
+  Download: [['path',{d:'M12 3v12M7 10l5 5 5-5M5 21h14'}]],
+  Move: [['path',{d:'M5 9l-2 3 2 3M19 9l2 3-2 3M9 5l3-2 3 2M9 19l3 2 3-2M3 12h18M12 3v18'}]],
   Plus: [['path',{d:'M12 5v14M5 12h14'}]],
   Play: [['path',{d:'m9 6 10 6-10 6V6Z'}]],
   Menu: [['path',{d:'M4 6h16M4 12h16M4 18h16'}]],
