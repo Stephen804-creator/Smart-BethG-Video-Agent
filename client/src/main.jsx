@@ -461,7 +461,7 @@ function App() {
   const activeSequence = sequences.find(item => item.id === sequenceId);
   const filmShots = filmProject?.shots || [];
   const filmTakes = filmProject?.takes || [];
-  const selectedFilmShot = filmShots[0] || null;
+
   const isLuma = provider.startsWith('luma');
   const selectedProviderInfo = providers.find(item => item.id === provider);
 
