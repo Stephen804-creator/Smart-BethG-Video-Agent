@@ -115,7 +115,7 @@ export async function saveGenerationToDatabase(record) {
        evaluation=EXCLUDED.evaluation,
        dataset_id=COALESCE(EXCLUDED.dataset_id, media_generations.dataset_id)`,
     [
-      record.id || record.dataset_id,
+      record.id || record.dataset_id || null,
       record.project || null,
       record.scene || null,
       record.shot || null,
