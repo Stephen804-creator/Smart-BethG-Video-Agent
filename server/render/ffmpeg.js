@@ -19,6 +19,29 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value)));
 }
 
+async function probeDuration(inputPath) {
+  const result = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', inputPath]);
+  const value = Number.parseFloat(result.stdout.trim());
+  if (!Number.isFinite(value)) throw new Error('Could not determine source duration.');
+  return value;
+}
+
+function atempoChain(speed) {
+  if (speed === 1) return null;
+  let remaining = speed;
+  const filters = [];
+  while (remaining < 0.5) {
+    filters.push('atempo=0.5');
+    remaining /= 0.5;
+  }
+  while (remaining > 2) {
+    filters.push('atempo=2');
+    remaining /= 2;
+  }
+  filters.push('atempo=' + remaining.toFixed(6));
+  return filters.join(',');
+}
+
 export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}, audioMix = {} }) {
   if (!fs.existsSync(inputPath)) throw new Error('The selected source media file is not available.');
   fs.mkdirSync(outputDir, { recursive: true });
@@ -30,6 +53,8 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
   const effect = String(effects.effect || 'none').toLowerCase();
   const intensity = clamp(Number(effects.intensity == null ? 50 : effects.intensity), 0, 100) / 100;
   const stabilizationRequested = Boolean(effects.stabilization);
+  const sourceDuration = await probeDuration(inputPath);
+  const effectiveDuration = trimOut > trimIn ? trimOut - trimIn : Math.max(0.01, sourceDuration - trimIn);
 
   const videoFilters = [];
   if (speed !== 1) videoFilters.push('setpts=PTS/' + speed);
@@ -40,10 +65,12 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
   if (effect === 'motion blur') videoFilters.push('tblend=all_mode=average');
 
   const transition = String(edit.transition || 'cut').toLowerCase();
-  if (transition === 'fade') videoFilters.push('fade=t=in:st=0:d=0.35,fade=t=out:st=9999:d=0.35');
-  if (transition === 'dip to black') videoFilters.push('fade=t=in:st=0:d=0.35,fade=t=out:st=9999:d=0.5:color=black');
+  if (transition === 'fade') videoFilters.push('fade=t=in:st=0:d=0.35,fade=t=out:st=' + Math.max(0, effectiveDuration - 0.35).toFixed(3) + ':d=0.35');
+  if (transition === 'dip to black') videoFilters.push('fade=t=in:st=0:d=0.35,fade=t=out:st=' + Math.max(0, effectiveDuration - 0.5).toFixed(3) + ':d=0.5:color=black');
 
   const audioFilters = [];
+  const tempo = atempoChain(speed);
+  if (tempo) audioFilters.push(tempo);
   if (volume !== 1) audioFilters.push('volume=' + volume.toFixed(3));
 
   const args = ['-y'];
