@@ -181,6 +181,22 @@ function App() {
     }
   }
 
+  async function exportFilm() {
+    if (!filmProjectId) return;
+    try {
+      setStatus('Rendering film export…');
+      const r = await apiFetch('/film/projects/' + filmProjectId + '/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not export film.');
+      setStatus('Film export ready');
+      notify('Film export rendered successfully', 'success');
+      if (data.export?.output) window.open(data.export.output, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      setStatus(e.message || 'Film export failed');
+      notify(e.message || 'Film export failed', 'error');
+    }
+  }
+
   async function cancelGeneration() {
     if (!activeJobId) return;
     try {
@@ -722,7 +738,7 @@ function App() {
           <option value="">Select a film project</option>
           {filmProjects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
         </select>
-        <button onClick={createFilmProject}>New film project</button>
+        <button onClick={createFilmProject}>New film project</button><button onClick={exportFilm} disabled={!filmProjectId}>Export timeline</button>
       </div>
       {!filmProject ? <div className="workspace-empty"><strong>Start a real production project</strong><span>Create a project to get scenes, a shot list, take logging and continuity tracking.</span></div> :
       <div className="workspace-body">
