@@ -133,18 +133,18 @@ app.use('/api', (req, res, next) => {
 });
 
 app.get('/api/jobs/:jobId', (req, res) => {
-  const job = generationQueue.get(req.params.jobId);
+  const job = generationQueue.ownedGet(req.params.jobId, getSessionUserId(req));
   if (!job) return res.status(404).json({ error: 'Job not found.' });
   res.json({ job });
 });
 app.post('/api/jobs/:jobId/cancel', (req, res) => {
-  const job = generationQueue.cancel(req.params.jobId);
+  const job = generationQueue.ownedCancel(req.params.jobId, getSessionUserId(req));
   if (!job) return res.status(404).json({ error: 'Job not found.' });
   res.json({ job });
 });
 app.post('/api/jobs/:jobId/retry', (req, res) => {
   try {
-    const job = generationQueue.retry(req.params.jobId);
+    const job = generationQueue.ownedRetry(req.params.jobId, getSessionUserId(req));
     if (!job) return res.status(404).json({ error: 'Job not found.' });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
@@ -956,7 +956,7 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
         preferLocal: req.body?.preferLocal !== false,
         providerId: req.body?.providerId || ''
       });
-    });
+    }, { ownerUserId: getSessionUserId(req) });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     const status = error?.statusCode || 500;
@@ -995,7 +995,7 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
     const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
-    const job = generationQueue.enqueue('media-generation', () => executeCanonicalGeneration({ ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId: getSessionUserId(req) }));
+    const job = generationQueue.enqueue('media-generation', () => executeCanonicalGeneration({ ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId: getSessionUserId(req) }), { ownerUserId: getSessionUserId(req) });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue media generation.' });
@@ -1054,7 +1054,7 @@ app.get('/api/generations', async (req, res) => {
 app.post('/api/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateGenerateInput(req.body || {});
-    const job = generationQueue.enqueue('video-generation', () => executeCanonicalGeneration({ ...input, ownerUserId: getSessionUserId(req) }));
+    const job = generationQueue.enqueue('video-generation', () => executeCanonicalGeneration({ ...input, ownerUserId: getSessionUserId(req) }), { ownerUserId: getSessionUserId(req) });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue video generation.' });
