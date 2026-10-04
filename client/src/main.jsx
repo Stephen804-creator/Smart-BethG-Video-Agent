@@ -1181,27 +1181,27 @@ function App() {
     </main>
     <aside className="inspector" aria-label="Generation inspector">
       <div className="inspector-head"><div><span className="eyebrow">INSPECTOR</span><h2>Shot settings</h2></div><Icon name="PanelRight" size={18}/></div>
-      <div className="inspector-section"><strong>Generation</strong><label>Provider<select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Auto routing</option>{providers.filter(p => p.id !== 'comfyui' || p.configured).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Duration<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value="2">2 sec</option><option value="4">4 sec</option><option value="6">6 sec</option><option value="8">8 sec</option></select></label><label>Aspect ratio<select value={ratio} onChange={e => setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option><option>4:3</option><option>3:4</option><option>21:9</option></select></label></div>
-      <div className="inspector-section"><strong>Camera</strong><div className="inspector-grid"><label>Framing<select value={framing} onChange={e => setFraming(e.target.value)}><option>wide shot</option><option>full body</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label><label>Movement<select value={cameraMovement} onChange={e => setCameraMovement(e.target.value)}><option>static camera</option><option>slow push-in</option><option>slow pull-back</option><option>slow pan</option><option>slow tracking shot</option></select></label></div></div>
-      <div className="inspector-section"><strong>Current status</strong><div className="inspector-status"><span className={generating ? 'status-dot busy' : 'status-dot'}/>{status}</div>{generating && <div className="progress-track" aria-label={`Generation progress ${progress}%`}><span style={{width: progress + '%'}}/></div>}</div>
-      {result?.generation && <div className="inspector-section"><strong>Result metadata</strong><div className="metadata-list"><span>Model <b>{result.generation.model || '—'}</b></span><span>Duration <b>{result.generation.duration ?? '—'}s</b></span><span>Ratio <b>{result.generation.ratio || ratio}</b></span><span>Estimated cost <b>{result.generation.estimatedCostUsd != null ? '
+      <div className="inspector-section">
+        <strong>Generation</strong>
+        <label>Provider<select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Auto routing</option>{providers.filter(p => p.id !== 'comfyui' || p.configured).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        <label>Duration<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value="2">2 sec</option><option value="4">4 sec</option><option value="6">6 sec</option><option value="8">8 sec</option></select></label>
+        <label>Aspect ratio<select value={ratio} onChange={e => setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option><option>4:3</option><option>3:4</option><option>21:9</option></select></label>
+      </div>
+      <div className="inspector-section">
+        <strong>Camera</strong>
+        <div className="inspector-grid"><label>Framing<select value={framing} onChange={e => setFraming(e.target.value)}><option>wide shot</option><option>full body</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label><label>Movement<select value={cameraMovement} onChange={e => setCameraMovement(e.target.value)}><option>static camera</option><option>slow push-in</option><option>slow pull-back</option><option>slow pan</option><option>slow tracking shot</option></select></label></div>
+      </div>
+      <div className="inspector-section">
+        <strong>Current status</strong>
+        <div className="inspector-status"><span className={generating ? 'status-dot busy' : 'status-dot'}/>{status}</div>
+        {generating && <div className="progress-track" aria-label={`Generation progress ${progress}%`}><span style={{width: progress + '%'}}/></div>}
+      </div>
+      {result?.generation && <div className="inspector-section"><strong>Result metadata</strong><div className="metadata-list"><span>Model <b>{result.generation.model || '—'}</b></span><span>Duration <b>{result.generation.duration ?? '—'}s</b></span><span>Ratio <b>{result.generation.ratio || ratio}</b></span><span>Estimated cost <b>{result.generation.estimatedCostUsd != null ? '$' + result.generation.estimatedCostUsd : 'Not configured'}</b></span><span>QC <b>{result.qualityControl?.decision || 'Pending'}</b></span></div></div>}
     </aside>
     <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent film timeline</footer>
     {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
     {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
-    {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>
-    }
-  </div>;
-}
-
-createRoot(document.getElementById('root')).render(<App/>);
- + result.generation.estimatedCostUsd : 'Not configured'}</b></span><span>QC <b>{result.qualityControl?.decision || 'Pending'}</b></span></div></div>}
-    </aside>
-    <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent film timeline</footer>
-    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
-    {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
-    {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>
-    }
+    {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>}
   </div>;
 }
 
