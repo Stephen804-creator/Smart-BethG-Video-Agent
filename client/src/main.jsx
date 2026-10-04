@@ -844,6 +844,26 @@ function App() {
           </div>}
         </div>}
 
+        {filmTab === 'takes' && <section className="timeline-panel" aria-label="Film timeline">
+          <div className="timeline-head">
+            <div><span className="eyebrow">EDIT TIMELINE</span><h3>Selected takes</h3><span className="hint">Each clip is a real project take. Trim, speed, effects and audio settings are applied when rendered.</span></div>
+            <div className="timeline-actions"><button className="secondary-button" onClick={exportFilm} disabled={!filmProjectId}>Export review cut</button></div>
+          </div>
+          <div className="timeline-ruler" aria-hidden="true">{[0,2,4,6,8,10,12].map(t => <span key={t}>{t}s</span>)}</div>
+          <div className="timeline-track">
+            {(filmShots || []).map((shot, index) => {
+              const take = (filmProject?.takes || []).find(t => t.id === shot.selectedTakeId) || (filmProject?.takes || []).find(t => t.shotId === shot.id);
+              const asset = take?.assetId ? (filmProject?.assets || []).find(a => a.id === take.assetId) : null;
+              const durationValue = Number(shot.duration || asset?.duration || 2) || 2;
+              return <button key={shot.id} className={shot.selectedTakeId ? 'timeline-clip ready' : 'timeline-clip'} onClick={() => { setProductionTool('edit'); setEditDraft(d => ({...d, shotId: shot.id, ...(shot.edit || {})})); }} title={take ? 'Open edit controls for this take' : 'No take selected'}>
+                <span className="clip-index">{index + 1}</span><strong>Shot {shot.number}</strong><span>{take ? 'Take ' + take.takeNumber : 'No take'}</span><b>{durationValue.toFixed(1)}s</b>
+              </button>;
+            })}
+            {!filmShots?.length && <div className="timeline-empty">Add shots to see them on the timeline.</div>}
+          </div>
+          <div className="timeline-summary"><span>{filmShots?.length || 0} clips</span><span>{(filmProject?.takes || []).filter(t => t.selected).length} selected takes</span><span>Export uses project shot order</span></div>
+        </section>}
+
         <div className="workspace-tool-dock">
           <div className="workspace-tool-heading">
             <div><strong>{filmTab === 'story' ? 'Story tools' : filmTab === 'shots' ? 'Scene tools' : filmTab === 'takes' ? 'Take tools' : filmTab === 'continuity' ? 'Continuity tools' : filmTab === 'assets' ? 'Asset tools' : 'AI director tools'}</strong><span>Keep specialist actions collapsed until you need them.</span></div>
