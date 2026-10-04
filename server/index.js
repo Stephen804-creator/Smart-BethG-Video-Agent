@@ -224,7 +224,17 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
 
   const video = getVideoResult(finalData);
   if (!video?.url) throw new Error('LTX returned a result, but no downloadable video URL was provided.');
-  const response = await fetch(video.url);
+  const downloadController = new AbortController();
+  const downloadTimer = setTimeout(() => downloadController.abort(), 120_000);
+  let response;
+  try {
+    response = await fetch(video.url, { signal: downloadController.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('LTX video download timed out after 120 seconds.');
+    throw error;
+  } finally {
+    clearTimeout(downloadTimer);
+  }
   if (!response.ok) throw new Error(`Could not download generated video (${response.status}).`);
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const filename = `${id}.mp4`;
