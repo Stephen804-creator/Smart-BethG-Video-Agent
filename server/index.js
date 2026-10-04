@@ -159,14 +159,14 @@ async function finalizeGeneratedMedia({ record, task, result, worker }) {
   record.qualityControl = evaluation;
   let database = { enabled: false, persisted: false };
   try {
-    const persisted = await saveGenerationToDatabase(datasetRecord);
+    const persisted = await saveGenerationToDatabase(record);
     database = { enabled: Boolean(process.env.DATABASE_URL), persisted: Boolean(persisted) };
   } catch (error) {
     database = { enabled: true, persisted: false, detail: error?.message || 'Database write failed.' };
     console.error('Generation artifact persisted locally; database write failed:', error);
   }
 
-  return { evaluation, database, datasetRecordId: datasetRecord.dataset_id };
+  return { evaluation, database, generationId: record.id };
 }
 
 function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
@@ -264,7 +264,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
 async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model }) {
   const settings = readSettings();
   const apiKey = settings.lumaApiKey || process.env.LUMAAI_API_KEY || '';
-  const reference = referenceGenerationId ? findGeneration(referenceGenerationId) : null;
+  const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
   const finalPrompt = buildShotPrompt({ prompt: [reference ? 'Preserve the established visual identity from the previous shot.' : '', prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
   const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2' });
   const downloadController = new AbortController();
