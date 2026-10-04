@@ -2079,3 +2079,16 @@ html[data-density="compact"] .nav-item {
 .timeline-clip{min-width:150px;padding:10px;display:grid;gap:4px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text);text-align:left;cursor:pointer}
 .timeline-clip:hover,.timeline-clip:focus-visible{border-color:var(--accent);background:var(--surface-3)}
 .timeline-index{color:var(--text-subtle);font-size:10px}.timeline-clip b{font-size:12px}.timeline-clip small{color:var(--text-muted);min-height:28px}.timeline-clip em{color:var(--accent);font-size:10px;font-style:normal}
+
+.timeline-panel{margin:14px 0;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.timeline-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.timeline-head h3{margin:3px 0;font-size:15px}
+.timeline-ruler{margin:18px 0 5px;display:grid;grid-template-columns:repeat(7,1fr);color:var(--text-subtle);font-size:10px}
+.timeline-ruler span:not(:first-child){text-align:right}
+.timeline-track{min-height:72px;display:flex;gap:5px;overflow-x:auto;padding:7px;border:1px solid var(--border);border-radius:9px;background:#0b1015}
+.timeline-clip{min-width:120px;flex:1 0 120px;min-height:56px;padding:8px;display:grid;grid-template-columns:auto 1fr;gap:2px 7px;text-align:left;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text-muted);cursor:pointer}
+.timeline-clip:hover,.timeline-clip:focus-visible{border-color:var(--accent)}
+.timeline-clip.ready{border-color:#38516e}
+.timeline-clip strong{color:var(--text);font-size:11px}.timeline-clip span{font-size:10px}.timeline-clip b{grid-column:2;color:var(--accent);font-size:10px}.clip-index{grid-row:1/span 3;align-self:center;color:var(--text-subtle)}
+.timeline-empty{padding:20px;color:var(--text-subtle);font-size:12px}.timeline-summary{display:flex;gap:16px;margin-top:9px;color:var(--text-subtle);font-size:10px}
+@media(max-width:600px){.timeline-head{display:grid}.timeline-actions,.timeline-actions button{width:100%}}
