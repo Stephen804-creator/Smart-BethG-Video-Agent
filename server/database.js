@@ -31,6 +31,7 @@ export async function initDatabase() {
       id TEXT PRIMARY KEY,
       name TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb
     );
 
@@ -80,12 +81,15 @@ export async function initDatabase() {
       execution JSONB NOT NULL DEFAULT '{}'::jsonb,
       evaluation JSONB NOT NULL DEFAULT '{}'::jsonb,
       licensing JSONB NOT NULL DEFAULT '{}'::jsonb,
+      dataset_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     CREATE INDEX IF NOT EXISTS idx_media_generations_project ON media_generations(project_id);
     CREATE INDEX IF NOT EXISTS idx_media_generations_shot ON media_generations(shot_id);
     CREATE INDEX IF NOT EXISTS idx_media_generations_created ON media_generations(created_at DESC);
+    ALTER TABLE media_projects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS dataset_id TEXT;
 
     CREATE TABLE IF NOT EXISTS media_knowledge_refs (
       generation_id TEXT NOT NULL,
@@ -103,12 +107,13 @@ export async function saveGenerationToDatabase(record) {
 
   await db.query(
     `INSERT INTO media_generations
-      (id, project_id, scene_id, shot_id, domain, operation, provider, worker_id, model, workflow, prompt, requirements, sound_plan, output, execution, evaluation, licensing)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      (id, project_id, scene_id, shot_id, domain, operation, provider, worker_id, model, workflow, prompt, requirements, sound_plan, output, execution, evaluation, licensing, dataset_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      ON CONFLICT (id) DO UPDATE SET
        output=EXCLUDED.output,
        execution=EXCLUDED.execution,
-       evaluation=EXCLUDED.evaluation`,
+       evaluation=EXCLUDED.evaluation,
+       dataset_id=COALESCE(EXCLUDED.dataset_id, media_generations.dataset_id)`,
     [
       record.id || record.dataset_id,
       record.project || null,
@@ -126,7 +131,8 @@ export async function saveGenerationToDatabase(record) {
       JSON.stringify(record.output || {}),
       JSON.stringify(record.execution || {}),
       JSON.stringify(record.evaluation || {}),
-      JSON.stringify(record.licensing || {})
+      JSON.stringify(record.licensing || {}),
+      record.dataset_id || null
     ]
   );
 
@@ -271,9 +277,9 @@ export async function saveFilmProjectToDatabase(project) {
   const db = getPool();
   if (!db || !project?.id) return false;
   await db.query(
-    `INSERT INTO media_projects (id, name, metadata)
-     VALUES ($1,$2,$3)
-     ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, metadata=EXCLUDED.metadata`,
+    `INSERT INTO media_projects (id, name, metadata, updated_at)
+     VALUES ($1,$2,$3,NOW())
+     ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, metadata=EXCLUDED.metadata, updated_at=NOW()`,
     [project.id, project.title || 'Untitled Film', JSON.stringify(project)]
   );
   return true;
@@ -282,6 +288,22 @@ export async function saveFilmProjectToDatabase(project) {
 export async function listFilmProjectsFromDatabase() {
   const db = getPool();
   if (!db) return [];
-  const result = await db.query('SELECT metadata FROM media_projects ORDER BY updated_at DESC NULLS LAST, created_at DESC');
+  const result = await db.query('SELECT metadata FROM media_projects ORDER BY updated_at DESC, created_at DESC');
   return result.rows.map(row => row.metadata).filter(project => project && project.id);
+}
+
+
+export async function getGenerationFromDatabase(id) {
+  const db = getPool();
+  if (!db || !id) return null;
+  const result = await db.query('SELECT * FROM media_generations WHERE id=$1 LIMIT 1', [id]);
+  return result.rows[0] || null;
+}
+
+export async function listGenerationsFromDatabase(limit = 100) {
+  const db = getPool();
+  if (!db) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const result = await db.query('SELECT * FROM media_generations ORDER BY created_at DESC LIMIT $1', [safeLimit]);
+  return result.rows;
 }
