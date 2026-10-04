@@ -111,7 +111,7 @@ app.post('/api/auth/register', authRateLimit, async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', authRateLimit, (req, res) => {
+app.post('/api/auth/login', authRateLimit, async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const supplied = String(req.body?.password || '');
   if (email && process.env.DATABASE_URL) {
@@ -131,6 +131,25 @@ app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
   return authMiddleware(req, res, () => apiRateLimit(req, res, next));
 });
+
+async function requireProjectAccess(req, res, next) {
+  try {
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Film project not found.' });
+    const userId = getSessionUserId(req);
+    if (project.ownerUserId && project.ownerUserId !== userId) {
+      return res.status(404).json({ error: 'Film project not found.' });
+    }
+    req.filmProject = project;
+    next();
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Could not verify project access.' });
+  }
+}
+
+app.use('/api/film/projects/:projectId', requireProjectAccess);
+app.use('/api/projects/:projectId/entities', (req, res, next) => requireProjectAccess(req, res, next));
+
 
 app.get('/api/jobs/:jobId', (req, res) => {
   const job = generationQueue.ownedGet(req.params.jobId, getSessionUserId(req));
