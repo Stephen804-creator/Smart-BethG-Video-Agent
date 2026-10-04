@@ -307,6 +307,55 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
+async function executeCanonicalGeneration(input = {}) {
+  const requestedProvider = String(input.provider || input.providerId || 'auto');
+  const operation = input.operation || 'text-to-video';
+  const prompt = String(input.prompt || '').trim();
+  const duration = Number(input.duration || input.requirements?.duration || 2);
+  const ratio = String(input.ratio || input.aspectRatio || input.requirements?.aspectRatio || '16:9');
+  const framing = input.framing || input.metadata?.framing || 'medium shot';
+  const cameraMovement = input.cameraMovement || input.metadata?.cameraMovement || 'slow push-in';
+  const lighting = input.lighting || input.metadata?.lighting || 'natural cinematic';
+  const referenceGenerationId = input.referenceGenerationId || input.continuity?.referenceGenerationId || null;
+  const allowPaid = input.allowPaid === true;
+  let selectedProvider = requestedProvider;
+  if (!selectedProvider || selectedProvider === 'auto') {
+    const settings = readSettings();
+    const available = listProviders(settings);
+    let comfy = { ok: false };
+    try { comfy = await getComfyHealth(await assertSafeComfyUrl(settings.comfyUrl)); } catch {}
+    const enriched = available.map(item => item.id === 'comfyui' ? { ...item, configured: comfy.ok, health: comfy } : item);
+    const decision = chooseProvider(enriched, { task: operation, allowPaid, preferFree: !allowPaid });
+    if (!decision.selected) throw new Error('No configured provider is available for this task. Paid providers are disabled unless explicitly allowed.');
+    selectedProvider = decision.selected.id;
+  }
+  if ((selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') && !allowPaid) throw new Error('Paid provider use is disabled. Explicitly enable paid generation before using Luma.');
+  if (selectedProvider === 'huggingface-ltx') {
+    if (operation !== 'text-to-video' && operation !== 'video-to-video') throw new Error('LTX currently supports text-to-video and continuity video-to-video in this pipeline.');
+    const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
+    const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
+    return generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId });
+  }
+  if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
+    if (operation !== 'text-to-video') throw new Error('Luma adapter currently supports text-to-video only.');
+    const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
+    const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
+    return generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model });
+  }
+  if (selectedProvider === 'comfyui') {
+    const task = normalizeMediaTask({ ...input, operation, prompt, duration, aspectRatio: ratio, requirements: { ...(input.requirements || {}), duration, aspectRatio: ratio, quality: input.requirements?.quality || 'standard' }, metadata: { ...(input.metadata || {}), framing, cameraMovement, lighting } });
+    validateMediaTask(task);
+    const settings = readSettings();
+    const safeComfyUrl = await assertSafeComfyUrl(settings.comfyUrl);
+    const worker = await createComfyWorker({ baseUrl: safeComfyUrl, workflowPath: comfyWorkflowPath, outputDir });
+    const generated = await worker.execute(task);
+    const record = { id: 'gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source };
+    const qualityControl = await finalizeGeneratedMedia({ record, task, result: generated, worker: { id: worker.id, provider: 'comfyui', runtime: worker.runtime } });
+    return { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
+  }
+  throw new Error('Unknown provider.');
+}
+
 app.get('/api/film/projects', (req, res) => {
   res.json({ projects: filmStore.listProjects() });
 });
@@ -722,39 +771,13 @@ app.get('/api/workers', async (req, res) => {
 app.post('/api/media/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateMediaGenerateInput(req.body || {});
-     const task = normalizeMediaTask(input);
+    const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
-    if (req.body?.workerId && req.body.workerId !== 'comfyui-worker') return res.status(400).json({ error: 'Unknown worker.' });
-
-    const job = generationQueue.enqueue('media-generation', async () => {
-      const settings = readSettings();
-      const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
-      const result = await worker.execute(task);
-      const record = {
-        id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        createdAt: new Date().toISOString(),
-        domain: task.domain,
-        operation: task.operation,
-        provider: 'comfyui',
-        workerId: worker.id,
-        model: task.metadata.model || null,
-        workflow: comfyWorkflowPath || null,
-        prompt: task.prompt,
-        requirements: task.requirements,
-        sound: task.sound,
-        output: result.output,
-        promptId: result.promptId,
-        source: result.source
-      };
-      const qualityControl = await finalizeGeneratedMedia({ record, task, result, worker });
-      appendGeneration(record);
-      return { status: 'Completed', videoUrl: result.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
-    });
+    const job = generationQueue.enqueue('media-generation', () => executeCanonicalGeneration({ ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true }));
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
-    const status = error?.statusCode || 400;
-    res.status(status).json({ error: error?.message || 'Could not queue media generation.' });
+    res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue media generation.' });
   }
 });
 
@@ -808,77 +831,12 @@ app.get('/api/generations', (req, res) => {
 
 
 app.post('/api/generate', generationRateLimit, async (req, res) => {
-  const { provider, prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId } = req.body || {};
-  if (!prompt?.trim()) return res.status(400).json({ error: 'A scene description is required.' });
-
   try {
-    const job = generationQueue.enqueue('video-generation', async () => {
-      let selectedProvider = provider;
-      if (!selectedProvider || selectedProvider === 'auto') {
-        const settings = readSettings();
-        const available = listProviders(settings);
-        const comfy = await getComfyHealth(settings.comfyUrl);
-        const enriched = available.map(item => item.id === 'comfyui' ? { ...item, configured: comfy.ok, health: comfy } : item);
-        const decision = chooseProvider(enriched, { task: 'text-to-video', allowPaid: false, preferFree: true });
-        if (!decision.selected) throw new Error('No configured free/local video provider is available.');
-        selectedProvider = decision.selected.id;
-      }
-
-      if (selectedProvider === 'huggingface-ltx') {
-        const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
-        const safeRatio = ['16:9', '9:16', '1:1'].includes(ratio) ? ratio : '16:9';
-        return generateWithLtx({ prompt: prompt.trim(), duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId });
-      }
-
-      if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
-        const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
-        const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
-        return generateLumaShot({ prompt: prompt.trim(), ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model });
-      }
-
-      if (selectedProvider === 'comfyui') {
-        const task = normalizeMediaTask({
-          operation: 'text-to-video',
-          prompt: prompt.trim(),
-          duration,
-          aspectRatio: ratio,
-          requirements: { duration, aspectRatio: ratio, quality: 'standard' },
-          metadata: { framing, cameraMovement, lighting }
-        });
-        validateMediaTask(task);
-        const settings = readSettings();
-        const safeComfyUrl = await assertSafeComfyUrl(settings.comfyUrl);
-        const worker = await createComfyWorker({ baseUrl: safeComfyUrl, workflowPath: comfyWorkflowPath, outputDir });
-        const generated = await worker.execute(task);
-        const record = {
-          id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          createdAt: new Date().toISOString(),
-          domain: 'video',
-          operation: task.operation,
-          provider: 'comfyui',
-          workerId: worker.id,
-          prompt: task.prompt,
-          requirements: task.requirements,
-          output: generated.output,
-          promptId: generated.promptId,
-          source: generated.source
-        };
-        const qualityControl = await finalizeGeneratedMedia({
-          record,
-          task,
-          result: generated,
-          worker: { id: worker.id, provider: 'comfyui', runtime: worker.runtime }
-        });
-        appendGeneration(record);
-        return { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
-      }
-
-      throw new Error('Unknown provider.');
-    });
+    const input = validateGenerateInput(req.body || {});
+    const job = generationQueue.enqueue('video-generation', () => executeCanonicalGeneration(input));
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
-    const status = error?.statusCode || 500;
-    res.status(status).json({ error: error?.message || 'Could not queue video generation.' });
+    res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue video generation.' });
   }
 });
 
