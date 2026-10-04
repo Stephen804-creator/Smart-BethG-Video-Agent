@@ -58,6 +58,8 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [progress, setProgress] = useState(0);
   const [selectedLayer, setSelectedLayer] = useState('base');
+  const [activeJobId, setActiveJobId] = useState(null);
+  const [retryJobId, setRetryJobId] = useState(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [loginPassword, setLoginPassword] = useState('');
@@ -179,6 +181,49 @@ function App() {
     }
   }
 
+  async function cancelGeneration() {
+    if (!activeJobId) return;
+    try {
+      const r = await apiFetch('/jobs/' + activeJobId + '/cancel', { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not cancel generation.');
+      setStatus('Generation cancelled');
+      notify('Generation cancelled');
+    } catch (e) {
+      notify(e.message || 'Could not cancel generation', 'error');
+    }
+  }
+
+  async function retryGeneration() {
+    if (!retryJobId || generating) return;
+    try {
+      setGenerating(true);
+      setStatus('Retrying generation…');
+      const r = await apiFetch('/jobs/' + retryJobId + '/retry', { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not retry generation.');
+      setActiveJobId(data.job.id);
+      setRetryJobId(null);
+      notify('Generation retry queued');
+      for (;;) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        const poll = await apiFetch('/jobs/' + data.job.id);
+        const state = await poll.json();
+        if (!poll.ok) throw new Error(state.error || 'Could not read retry job.');
+        if (state.job?.status === 'completed') { setResult(state.job.result); setStatus('Completed'); notify('Retry completed', 'success'); break; }
+        if (state.job?.status === 'failed') { setRetryJobId(data.job.id); throw new Error(state.job.error || 'Retry failed.'); }
+        if (state.job?.status === 'cancelled') { setStatus('Retry cancelled'); break; }
+        setStatus(state.job?.status === 'running' ? 'Generating…' : 'Queued…');
+      }
+    } catch (e) {
+      setStatus(e.message || 'Retry failed');
+      notify(e.message || 'Retry failed', 'error');
+    } finally {
+      setGenerating(false);
+      setActiveJobId(null);
+    }
+  }
+
   async function addResultToSequence() {
     const generationId = result?.generation?.id;
     if (!generationId || !sequenceId) return;
@@ -207,12 +252,15 @@ function App() {
       if (!r.ok) throw new Error(queued.error || 'Could not queue generation.');
       const jobId = queued.job?.id;
       if (!jobId) throw new Error('The server did not return a job ID.');
+      setActiveJobId(jobId);
+      setRetryJobId(null);
 
       for (;;) {
         await new Promise(resolve => setTimeout(resolve, 2500));
         const poll = await apiFetch('/jobs/' + jobId);
         const data = await poll.json();
         if (!poll.ok) throw new Error(data.error || 'Could not read generation job.');
+        if (data.job?.status === 'cancelled') { setStatus('Generation cancelled'); notify('Generation cancelled'); break; }
         if (data.job?.status === 'completed') {
           setResult(data.job.result);
           setStatus('Completed');
@@ -220,7 +268,7 @@ function App() {
           notify('Shot generated successfully', 'success');
           break;
         }
-        if (data.job?.status === 'failed') throw new Error(data.job.error || 'Generation failed.');
+        if (data.job?.status === 'failed') { setRetryJobId(jobId); throw new Error(data.job.error || 'Generation failed.'); }
         if (data.job?.status === 'running') { setStatus('Generating…'); setProgress(55); }
         else { setStatus('Queued…'); setProgress(25); }
       }
@@ -230,6 +278,7 @@ function App() {
       notify(e.message || 'Generation failed', 'error');
     } finally {
       setGenerating(false);
+      setActiveJobId(null);
       setTimeout(() => setProgress(0), 900);
     }
   }
@@ -1090,7 +1139,8 @@ function App() {
       {result?.generation && <div className="inspector-section"><strong>Result metadata</strong><div className="metadata-list"><span>Model <b>{result.generation.model || '—'}</b></span><span>Duration <b>{result.generation.duration ?? '—'}s</b></span><span>Ratio <b>{result.generation.ratio || ratio}</b></span></div></div>}
     </aside>
     <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent shot sequences</footer>
-    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div></div>}
+    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
+    {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
     {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>
     }
   </div>;
