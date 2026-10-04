@@ -321,10 +321,12 @@ export async function listFilmProjectsFromDatabase(ownerUserId = null) {
 }
 
 
-export async function getGenerationFromDatabase(id) {
+export async function getGenerationFromDatabase(id, ownerUserId = null) {
   const db = getPool();
   if (!db || !id) return null;
-  const result = await db.query('SELECT * FROM media_generations WHERE id=$1 LIMIT 1', [id]);
+  const result = ownerUserId
+    ? await db.query('SELECT * FROM media_generations WHERE id=$1 AND (owner_user_id=$2 OR owner_user_id IS NULL) LIMIT 1', [id, ownerUserId])
+    : await db.query('SELECT * FROM media_generations WHERE id=$1 LIMIT 1', [id]);
   return result.rows[0] || null;
 }
 
