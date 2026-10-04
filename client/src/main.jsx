@@ -807,15 +807,15 @@ function App() {
             {(filmTab === 'story' ? [
               ['premise','📝','Premise'],['characters','👤','Characters'],['world','🌍','World'],['rules','📜','Rules']
             ] : filmTab === 'shots' ? [
-              ['scene','🎬','Scene'],['blocking','🧍','Blocking'],['coverage','🎥','Coverage'],['dialogue','💬','Dialogue'],['next','➡️','Next shot']
+              ['scene','Clapperboard','Scene'],['blocking','Move','Blocking'],['coverage','Camera','Coverage'],['dialogue','Message','Dialogue'],['next','ArrowRight','Next shot']
             ] : filmTab === 'takes' ? [
-              ['select','⭐','Select'],['camera-log','📷','Camera log'],['compare','⚖️','Compare'],['notes','🗒️','Notes']
+              ['select','Check','Select'],['camera-log','Camera','Camera log'],['compare','Scale','Compare'],['notes','FileText','Notes']
             ] : filmTab === 'continuity' ? [
               ['characters-state','👤','Characters'],['props-state','📦','Props'],['direction','↔️','Direction'],['lighting-state','💡','Lighting'],['qc','✓','QC']
             ] : filmTab === 'assets' ? [
-              ['import','⬆️','Import'],['organize','🗂️','Organize'],['inspect','🔎','Inspect'],['attach','🔗','Attach'],['integrity','🛡️','Integrity']
+              ['import','Upload','Import'],['organize','FolderOpen','Organize'],['inspect','Search','Inspect'],['attach','Link','Attach'],['integrity','Shield','Integrity']
             ] : [
-              ['review','🧠','Review'],['coverage-ai','🎥','Coverage'],['continuity-ai','🔄','Continuity'],['next-step','➡️','Next step']
+              ['review','Brain','Review'],['coverage-ai','Camera','Coverage'],['continuity-ai','RefreshCw','Continuity'],['next-step','ArrowRight','Next step']
             ]).map(([id,icon,label]) => <button key={id} className={workspaceTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setWorkspaceTool(workspaceTool === id ? '' : id)} title={label}><span>{icon}</span><small>{label}</small></button>)}
           </div>
 
