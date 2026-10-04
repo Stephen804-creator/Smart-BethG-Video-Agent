@@ -75,6 +75,7 @@ export async function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS media_generations (
       id TEXT PRIMARY KEY,
+      owner_user_id TEXT REFERENCES app_users(id),
       project_id TEXT,
       scene_id TEXT,
       shot_id TEXT,
@@ -102,6 +103,7 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_media_generations_created ON media_generations(created_at DESC);
     ALTER TABLE media_projects ADD COLUMN IF NOT EXISTS owner_user_id TEXT REFERENCES app_users(id);
     ALTER TABLE media_projects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS owner_user_id TEXT REFERENCES app_users(id);
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS dataset_id TEXT;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS actual_cost_usd NUMERIC;
@@ -137,8 +139,8 @@ export async function saveGenerationToDatabase(record) {
 
   await db.query(
     `INSERT INTO media_generations
-      (id, project_id, scene_id, shot_id, domain, operation, provider, worker_id, model, workflow, prompt, requirements, sound_plan, output, execution, evaluation, licensing, dataset_id, estimated_cost_usd, actual_cost_usd)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      (id, owner_user_id, project_id, scene_id, shot_id, domain, operation, provider, worker_id, model, workflow, prompt, requirements, sound_plan, output, execution, evaluation, licensing, dataset_id, estimated_cost_usd, actual_cost_usd)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      ON CONFLICT (id) DO UPDATE SET
        output=EXCLUDED.output,
        execution=EXCLUDED.execution,
@@ -147,7 +149,7 @@ export async function saveGenerationToDatabase(record) {
        estimated_cost_usd=COALESCE(EXCLUDED.estimated_cost_usd, media_generations.estimated_cost_usd),
        actual_cost_usd=COALESCE(EXCLUDED.actual_cost_usd, media_generations.actual_cost_usd)`,
     [
-      id, record.project || record.projectId || null, record.scene || record.sceneId || null, record.shot || record.shotId || null,
+      id, record.ownerUserId || null, record.project || record.projectId || null, record.scene || record.sceneId || null, record.shot || record.shotId || null,
       task.domain || record.domain || 'video', task.operation || record.operation || 'text-to-video',
       execution.provider || record.provider || null, execution.worker_id || record.workerId || null,
       execution.model || record.model || null, execution.workflow || record.workflow || null,
@@ -326,11 +328,13 @@ export async function getGenerationFromDatabase(id) {
   return result.rows[0] || null;
 }
 
-export async function listGenerationsFromDatabase(limit = 100) {
+export async function listGenerationsFromDatabase(limit = 100, ownerUserId = null) {
   const db = getPool();
   if (!db) return [];
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
-  const result = await db.query('SELECT * FROM media_generations ORDER BY created_at DESC LIMIT $1', [safeLimit]);
+  const result = ownerUserId
+    ? await db.query('SELECT * FROM media_generations WHERE owner_user_id=$1 OR owner_user_id IS NULL ORDER BY created_at DESC LIMIT $2', [ownerUserId, safeLimit])
+    : await db.query('SELECT * FROM media_generations ORDER BY created_at DESC LIMIT $1', [safeLimit]);
   return result.rows;
 }
 
