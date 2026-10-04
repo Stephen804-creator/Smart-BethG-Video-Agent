@@ -31,6 +31,7 @@ const paths = {
   Box: [['path',{d:'m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z'}],['path',{d:'M4 7.5 12 12l8-4.5M12 12v9'}]],
   ArrowLeftRight: [['path',{d:'M3 7h18l-4-4M21 17H3l4 4'}]],
   Lightbulb: [['path',{d:'M9 18h6M10 22h4M8 14a6 6 0 1 1 8 0c-1 1-2 2-2 4h-4c0-2-1-3-2-4Z'}]],
+  Search: [['circle',{cx:'11',cy:'11',r:'7'}],['path',{d:'m20 20-4-4'}]],
   CircleAlert: [['circle',{cx:'12',cy:'12',r:'9'}],['path',{d:'M12 8v4M12 16h.01'}]],
   Check: [['path',{d:'m5 12 4 4L19 6'}]]
 };
