@@ -128,6 +128,6 @@ export async function renderTimeline({ clips = [], outputDir }) {
     outputPath,
     output: '/output/' + filename,
     clips: rendered,
-    duration: rendered.reduce((sum, item) => sum + Number(item.applied?.trimOut > item.applied?.trimIn ? item.applied.trimOut - item.applied.trimIn : 0), 0)
+    duration: await probeDuration(outputPath)
   };
 }
