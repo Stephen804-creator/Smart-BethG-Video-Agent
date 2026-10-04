@@ -19,12 +19,12 @@ function developmentBypassAllowed() {
 }
 
 export function authConfigured() {
-  return Boolean(process.env.APP_AUTH_PASSWORD && process.env.APP_SESSION_SECRET);
+  return Boolean(process.env.APP_SESSION_SECRET && (process.env.APP_AUTH_PASSWORD || process.env.DATABASE_URL));
 }
 
 export function assertAuthConfigured() {
   if (!authConfigured() && !developmentBypassAllowed()) {
-    throw new Error('Authentication is required in production. Set APP_AUTH_PASSWORD and APP_SESSION_SECRET.');
+    throw new Error('Authentication is required in production. Set APP_SESSION_SECRET and either APP_AUTH_PASSWORD or DATABASE_URL.');
   }
 }
 
