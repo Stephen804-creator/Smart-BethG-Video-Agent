@@ -777,11 +777,13 @@ function App() {
           {productionTool === 'layers' && <div className="production-tool-panel">
             <div className="tool-panel-head"><strong>Background & layers</strong><span>Think in editable layers: base video, background, foreground, text and overlays.</span></div>
             <div className="tool-layer-list">
-              <button className="tool-layer active">🎞️ Base shot <span>Primary video</span></button>
-              <button className="tool-layer">🖼️ Background <span>Replace / remove / blur</span></button>
-              <button className="tool-layer">✨ Foreground effect <span>VFX / atmosphere</span></button>
-              <button className="tool-layer">🔤 Text / title <span>Optional overlay</span></button>
-              <button className="tool-layer">🎵 Audio bed <span>Music / ambience / SFX</span></button>
+              {[
+                ['base','Base shot','Primary video','Clapperboard'],
+                ['background','Background','Replace / remove / blur','FolderOpen'],
+                ['foreground','Foreground effect','VFX / atmosphere','Sparkles'],
+                ['text','Text / title','Optional overlay','WandSparkles'],
+                ['audio','Audio bed','Music / ambience / SFX','Camera']
+              ].map(([id,label,description,icon]) => <button key={id} className={selectedLayer === id ? 'tool-layer active' : 'tool-layer'} onClick={() => { setSelectedLayer(id); setStatus(label + ' layer selected'); }} aria-pressed={selectedLayer === id}><Icon name={icon} size={16}/><b>{label}</b><span>{description}</span></button>)}
             </div>
           </div>}
 
