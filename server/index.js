@@ -455,6 +455,13 @@ app.post('/api/film/projects', (req, res) => {
   catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
 });
 
+app.use('/api/film/projects/:projectId', (req, res, next) => {
+  const project = filmStore.getProject(req.params.projectId);
+  const userId = getSessionUserId(req);
+  if (!project || (project.ownerUserId && project.ownerUserId !== userId)) return res.status(404).json({ error: 'Film project not found.' });
+  next();
+});
+
 app.get('/api/film/projects/:projectId', (req, res) => {
   const project = filmStore.getProject(req.params.projectId);
   if (!project || (project.ownerUserId && project.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
