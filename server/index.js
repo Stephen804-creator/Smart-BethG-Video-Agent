@@ -262,7 +262,17 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   const reference = referenceGenerationId ? findGeneration(generationsFile, referenceGenerationId) : null;
   const finalPrompt = buildShotPrompt({ prompt: [reference ? 'Preserve the established visual identity from the previous shot.' : '', prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
   const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2' });
-  const response = await fetch(videoUrl);
+  const downloadController = new AbortController();
+  const downloadTimer = setTimeout(() => downloadController.abort(), 120_000);
+  let response;
+  try {
+    response = await fetch(videoUrl, { signal: downloadController.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('Luma video download timed out after 120 seconds.');
+    throw error;
+  } finally {
+    clearTimeout(downloadTimer);
+  }
   if (!response.ok) throw new Error(`Could not download Luma video (${response.status}).`);
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const filename = `${id}.mp4`;
