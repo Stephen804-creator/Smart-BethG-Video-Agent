@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { Icon } from './icons.jsx';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -52,10 +53,70 @@ function App() {
   const [effectDraft, setEffectDraft] = useState({ effect: 'none', intensity: 50, background: 'original', overlay: '', stabilization: false });
   const [audioDraft, setAudioDraft] = useState({ dialogue: 100, music: 70, sfx: 100, ambience: 80 });
   const [workspaceTool, setWorkspaceTool] = useState('');
+  const [route, setRoute] = useState(window.location.pathname || '/generator');
+  const [density, setDensity] = useState(localStorage.getItem('cinematic-density') || 'comfortable');
+  const [notice, setNotice] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [selectedLayer, setSelectedLayer] = useState('base');
   const [authenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+
+  const routes = {
+    '/': 'generator',
+    '/generator': 'generator',
+    '/projects': 'projects',
+    '/story': 'story',
+    '/shots': 'shots',
+    '/takes': 'takes',
+    '/continuity': 'continuity',
+    '/assets': 'assets',
+    '/assistant': 'assistant',
+    '/settings': 'settings'
+  };
+
+  function navigate(path) {
+    const target = routes[path] ? path : '/generator';
+    window.history.pushState({}, '', target);
+    setRoute(target);
+    const view = routes[target];
+    if (view === 'generator') { setFilmMode(false); setShowWorkspaceMenu(false); }
+    else if (view === 'settings') { setFilmMode(false); setShowWorkspaceMenu(false); setShowSettings(true); }
+    else {
+      setShowSettings(false);
+      setShowWorkspaceMenu(true);
+      setFilmMode(true);
+      const tab = { story: 'story', shots: 'shots', takes: 'takes', continuity: 'continuity', assets: 'assets', assistant: 'assistant' }[view];
+      if (tab) setFilmTab(tab);
+      if (view === 'projects') setFilmTab('shots');
+    }
+  }
+
+  useEffect(() => {
+    const onPopState = () => {
+      const path = window.location.pathname;
+      setRoute(routes[path] ? path : '/generator');
+    };
+    window.addEventListener('popstate', onPopState);
+    navigate(window.location.pathname || '/generator');
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+    localStorage.setItem('cinematic-density', density);
+  }, [density]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 3600);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  function notify(message, type = 'info') {
+    setNotice({ message, type });
+  }
 
   async function apiFetch(path, options = {}) {
     const response = await fetch(API + path, { credentials: 'include', ...options });
@@ -132,6 +193,8 @@ function App() {
   async function generate() {
     if (!prompt.trim() || generating) return;
     setGenerating(true);
+    setProgress(8);
+    notify('Generation queued');
     setStatus(provider === 'huggingface-ltx' ? 'Queued for LTX…' : provider.startsWith('luma') ? 'Queued for Luma…' : 'Queued for provider…');
     setResult(null);
     try {
@@ -153,15 +216,21 @@ function App() {
         if (data.job?.status === 'completed') {
           setResult(data.job.result);
           setStatus('Completed');
+          setProgress(100);
+          notify('Shot generated successfully', 'success');
           break;
         }
         if (data.job?.status === 'failed') throw new Error(data.job.error || 'Generation failed.');
-        setStatus(data.job?.status === 'running' ? 'Generating…' : 'Queued…');
+        if (data.job?.status === 'running') { setStatus('Generating…'); setProgress(55); }
+        else { setStatus('Queued…'); setProgress(25); }
       }
     } catch (e) {
       setStatus(e.message || 'Generation failed');
+      setProgress(0);
+      notify(e.message || 'Generation failed', 'error');
     } finally {
       setGenerating(false);
+      setTimeout(() => setProgress(0), 900);
     }
   }
 
@@ -482,16 +551,46 @@ function App() {
     );
   }
 
-  return <div className="app">
+  const navItems = [
+    ['generator', '/generator', 'Generator', 'Sparkles'],
+    ['projects', '/projects', 'Projects', 'LayoutDashboard'],
+    ['story', '/story', 'Story & World', 'BookOpen'],
+    ['shots', '/shots', 'Scenes & Shots', 'Clapperboard'],
+    ['takes', '/takes', 'Takes & Camera', 'Camera'],
+    ['continuity', '/continuity', 'Continuity', 'Link'],
+    ['assets', '/assets', 'Media Assets', 'FolderOpen'],
+    ['assistant', '/assistant', 'AI Production Help', 'WandSparkles']
+  ];
+
+  return <div className={`app-shell density-${density}`}>
+    <aside className="sidebar" aria-label="Primary navigation">
+      <div className="brand">
+        <div className="brand-mark"><Icon name="Clapperboard" size={20}/></div>
+        <div><strong>Cinematic Agent</strong><span>AI filmmaking workspace</span></div>
+      </div>
+      <nav className="sidebar-nav">
+        <span className="nav-label">WORKSPACE</span>
+        {navItems.map(([id, path, label, icon]) => <button key={id} className={routes[route] === id ? 'nav-item active' : 'nav-item'} onClick={() => navigate(path)} aria-current={routes[route] === id ? 'page' : undefined}>
+          <Icon name={icon} size={18}/><span>{label}</span>
+        </button>)}
+        <span className="nav-label">SYSTEM</span>
+        <button className={routes[route] === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => navigate('/settings')} aria-current={routes[route] === 'settings' ? 'page' : undefined}><Icon name="Settings" size={18}/><span>Appearance</span></button>
+      </nav>
+      <div className="sidebar-bottom">
+        <div className="connection-status"><span className="status-dot"/><span>Engine connected</span></div>
+        <button className="nav-item" onClick={logout}><Icon name="LogOut" size={18}/><span>Sign out</span></button>
+      </div>
+    </aside>
+    <div className="app">
     <header>
       <div><div className="eyebrow">AI FILMMAKING</div><h1>Cinematic Agent</h1><p>Describe what you want. The engine handles the production path.</p></div>
       <div className="header-actions">
-        <button className={provider === 'auto' ? 'provider-chip active' : 'provider-chip'} onClick={() => setProvider(provider === 'auto' ? 'huggingface-ltx' : 'auto')} title="Automatic provider routing"><span>⚙</span><b>{provider === 'auto' ? 'Auto' : (selectedProviderInfo?.name || 'Provider')}</b></button>
-        <button className={showWorkspaceMenu ? 'menu-button active' : 'menu-button'} onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)} title="Open workspace tools"><span>☰</span></button><button className="menu-button" onClick={logout} title="Sign out"><span>↪</span></button>
+        <div className="provider-chip"><Icon name="Zap" size={15}/><b>{provider === 'auto' ? 'Auto routing' : (selectedProviderInfo?.name || 'Provider')}</b></div>
+        <button className="menu-button" onClick={() => navigate('/settings')} aria-label="Open appearance settings" title="Appearance"><Icon name="Settings" size={18}/></button>
       </div>
     </header>
 
-    {showWorkspaceMenu && <aside className="workspace-menu">
+    {false && <aside className="workspace-menu">
       <div className="menu-title"><strong>Workspace</strong><span>Production tools</span></div>
       <button onClick={() => { setFilmMode(true); setFilmTab('story'); setShowWorkspaceMenu(false); }}>📖 <span>Story & World</span></button>
       <button onClick={() => { setFilmMode(true); setFilmTab('shots'); setShowWorkspaceMenu(false); }}>🎬 <span>Scenes & Shots</span></button>
@@ -504,7 +603,7 @@ function App() {
       <small>Provider credentials and API secrets are not editable here. They belong in server-side environment configuration.</small>
     </aside>}
 
-    {showSettings && <section className="panel settings appearance-panel"><h2>Appearance</h2><p className="hint">Visual preferences will live here. Provider credentials remain server-side environment configuration and are never exposed as user-editable workspace fields.</p><label>Interface density<select defaultValue="comfortable"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></section>}
+    {showSettings && <section className="panel settings appearance-panel"><h2>Appearance</h2><p className="hint">Visual preferences will live here. Provider credentials remain server-side environment configuration and are never exposed as user-editable workspace fields.</p><label>Interface density<select value={density} onChange={e => setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></section>}
 
     {showWorkspaceMenu && <section className="panel dashboard-panel">
       <div className="section-head">
@@ -958,7 +1057,8 @@ function App() {
       </div>}
     </section>
 
-    <main>
+    <main id="main-content" tabIndex="-1">
+      <section className="hero-workspace">
       <section className="panel composer">
         <div className="section-head"><h2>Generate a shot</h2><span className="status"><i className={generating ? 'busy' : ''}/> {status}</span></div>
         <label>Scene description<textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows="7" placeholder="Describe the shot you want to generate…"/></label>
@@ -991,8 +1091,19 @@ function App() {
           </div>
         </div>}
       </section>
+      </section>
     </main>
+    <aside className="inspector" aria-label="Generation inspector">
+      <div className="inspector-head"><div><span className="eyebrow">INSPECTOR</span><h2>Shot settings</h2></div><Icon name="PanelRight" size={18}/></div>
+      <div className="inspector-section"><strong>Generation</strong><label>Provider<select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Auto routing</option>{providers.filter(p => p.id !== 'comfyui' || p.configured).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Duration<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value="2">2 sec</option><option value="4">4 sec</option><option value="6">6 sec</option><option value="8">8 sec</option></select></label><label>Aspect ratio<select value={ratio} onChange={e => setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option><option>4:3</option><option>3:4</option><option>21:9</option></select></label></div>
+      <div className="inspector-section"><strong>Camera</strong><div className="inspector-grid"><label>Framing<select value={framing} onChange={e => setFraming(e.target.value)}><option>wide shot</option><option>full body</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label><label>Movement<select value={cameraMovement} onChange={e => setCameraMovement(e.target.value)}><option>static camera</option><option>slow push-in</option><option>slow pull-back</option><option>slow pan</option><option>slow tracking shot</option></select></label></div></div>
+      <div className="inspector-section"><strong>Current status</strong><div className="inspector-status"><span className={generating ? 'status-dot busy' : 'status-dot'}/>{status}</div>{generating && <div className="progress-track" aria-label={`Generation progress ${progress}%`}><span style={{width: progress + '%'}}/></div>}</div>
+      {result?.generation && <div className="inspector-section"><strong>Result metadata</strong><div className="metadata-list"><span>Model <b>{result.generation.model || '—'}</b></span><span>Duration <b>{result.generation.duration ?? '—'}s</b></span><span>Ratio <b>{result.generation.ratio || ratio}</b></span></div></div>}
+    </aside>
     <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent shot sequences</footer>
+    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div></div>}
+    {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>
+    }
   </div>;
 }
 
