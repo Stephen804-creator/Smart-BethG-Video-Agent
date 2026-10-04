@@ -16,7 +16,9 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
       result: job.result || null,
       error: job.error || null,
       cancelledAt: job.cancelledAt || null,
-      attempts: job.attempts || 1
+      attempts: job.attempts || 1,
+      ownerUserId: job.ownerUserId || null,
+      retryOf: job.retryOf || null
     };
   }
 
@@ -47,7 +49,7 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
     }
   }
 
-  function enqueue(type, task) {
+  function enqueue(type, task, metadata = {}) {
     if (pending.length >= maxQueue) {
       const error = new Error('Generation queue is full. Try again later.');
       error.statusCode = 429;
@@ -61,6 +63,7 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
       task,
       taskFactory: task,
       attempts: 1,
+      ownerUserId: metadata.ownerUserId || null,
       cancelRequested: false
     };
     jobs.set(job.id, job);
@@ -103,6 +106,7 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
       taskFactory: original.taskFactory,
       attempts: (original.attempts || 1) + 1,
       retryOf: original.id,
+      ownerUserId: original.ownerUserId || null,
       cancelRequested: false
     };
     if (pending.length >= maxQueue) {
@@ -116,5 +120,9 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
     return snapshot(retryJob);
   }
 
-  return { enqueue, get, cancel, retry, size: () => pending.length + active };
+  function ownedGet(id, ownerUserId) { const job = jobs.get(id); return job && (!job.ownerUserId || job.ownerUserId === ownerUserId) ? snapshot(job) : null; }
+  function ownedCancel(id, ownerUserId) { const job = jobs.get(id); if (!job || (job.ownerUserId && job.ownerUserId !== ownerUserId)) return null; return cancel(id); }
+  function ownedRetry(id, ownerUserId) { const job = jobs.get(id); if (!job || (job.ownerUserId && job.ownerUserId !== ownerUserId)) return null; return retry(id); }
+
+  return { enqueue, get, cancel, retry, ownedGet, ownedCancel, ownedRetry, size: () => pending.length + active };
 }
