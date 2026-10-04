@@ -1129,7 +1129,7 @@ function App() {
         <div className="section-head"><h2>Generate a shot</h2><span className="status"><i className={generating ? 'busy' : ''}/> {status}</span></div>
         <label>Scene description<textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows="7" placeholder="Describe the shot you want to generate…"/></label>
         <div className="search-toolbar">
-          <button type="button" className={showGenerationControls ? 'control-icon active' : 'control-icon'} onClick={() => setShowGenerationControls(!showGenerationControls)} title="Generation controls">☷</button>
+          <button type="button" className={showGenerationControls ? 'control-icon active' : 'control-icon'} onClick={() => setShowGenerationControls(!showGenerationControls)} title="Generation controls" aria-label="Generation controls"><Icon name="Settings" size={16}/></button>
           <span className="control-summary">{duration}s · {ratio} · {framing}</span>
           <div className="provider-dropdown"><span className="provider-icon"><Icon name="Zap" size={13}/></span><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Auto · route automatically</option>{providers.filter(p => p.id !== 'comfyui' || p.configured).map(p => <option key={p.id} value={p.id}>{p.name}{p.configured ? '' : ' · unavailable'}</option>)}</select></div>
         </div>
@@ -1147,7 +1147,7 @@ function App() {
 
       <section className="panel preview">
         <div className="section-head"><h2>Result</h2>{result && <span className="tag">{result.provider}</span>}</div>
-        {!result ? <div className="empty"><div className="play"><Icon name="Play" size={20}/></div><strong>Your generated shot will appear here</strong><span>Choose LTX or Luma as the active generation engine.</span></div> : <div className="result">
+        {!result ? <div className="empty"><div className="play"><Icon name="Play" size={20}/></div><strong>Your generated shot will appear here</strong><span>The selected provider will execute this shot and the result will be saved with production metadata.</span></div> : <div className="result">
           <div className="resultbox">{result.videoUrl ? <video src={result.videoUrl} controls playsInline/> : <div><strong>{result.message || 'No video returned'}</strong><small>{result.detail || ''}</small></div>}</div>
           {result.generation && <div className="meta"><span>{result.generation.model}</span><span>{result.generation.mode}</span>{result.generation.duration != null && <span>{result.generation.duration}s</span>}{result.generation.width && <span>{result.generation.width}×{result.generation.height}</span>}{result.generation.estimatedCostUsd != null && <span>Est. ${result.generation.estimatedCostUsd}</span>}</div>}
           <div className="actions">
@@ -1164,7 +1164,18 @@ function App() {
       <div className="inspector-section"><strong>Generation</strong><label>Provider<select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Auto routing</option>{providers.filter(p => p.id !== 'comfyui' || p.configured).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Duration<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value="2">2 sec</option><option value="4">4 sec</option><option value="6">6 sec</option><option value="8">8 sec</option></select></label><label>Aspect ratio<select value={ratio} onChange={e => setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option><option>4:3</option><option>3:4</option><option>21:9</option></select></label></div>
       <div className="inspector-section"><strong>Camera</strong><div className="inspector-grid"><label>Framing<select value={framing} onChange={e => setFraming(e.target.value)}><option>wide shot</option><option>full body</option><option>medium shot</option><option>close-up</option><option>extreme close-up</option></select></label><label>Movement<select value={cameraMovement} onChange={e => setCameraMovement(e.target.value)}><option>static camera</option><option>slow push-in</option><option>slow pull-back</option><option>slow pan</option><option>slow tracking shot</option></select></label></div></div>
       <div className="inspector-section"><strong>Current status</strong><div className="inspector-status"><span className={generating ? 'status-dot busy' : 'status-dot'}/>{status}</div>{generating && <div className="progress-track" aria-label={`Generation progress ${progress}%`}><span style={{width: progress + '%'}}/></div>}</div>
-      {result?.generation && <div className="inspector-section"><strong>Result metadata</strong><div className="metadata-list"><span>Model <b>{result.generation.model || '—'}</b></span><span>Duration <b>{result.generation.duration ?? '—'}s</b></span><span>Ratio <b>{result.generation.ratio || ratio}</b></span></div></div>}
+      {result?.generation && <div className="inspector-section"><strong>Result metadata</strong><div className="metadata-list"><span>Model <b>{result.generation.model || '—'}</b></span><span>Duration <b>{result.generation.duration ?? '—'}s</b></span><span>Ratio <b>{result.generation.ratio || ratio}</b></span><span>Estimated cost <b>{result.generation.estimatedCostUsd != null ? '
+    </aside>
+    <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent film timeline</footer>
+    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
+    {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
+    {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>
+    }
+  </div>;
+}
+
+createRoot(document.getElementById('root')).render(<App/>);
+ + result.generation.estimatedCostUsd : 'Not configured'}</b></span><span>QC <b>{result.qualityControl?.decision || 'Pending'}</b></span></div></div>}
     </aside>
     <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent film timeline</footer>
     {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
