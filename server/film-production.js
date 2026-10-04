@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 
 function id(prefix) {
   return prefix + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
@@ -20,7 +21,7 @@ export function createFilmStore(filePath) {
   };
 
   const write = data => {
-    fs.mkdirSync(filePath.split('/').slice(0, -1).join('/'), { recursive: true });
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
   };
 
