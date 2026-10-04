@@ -732,12 +732,12 @@ function App() {
       {!filmProject ? <div className="workspace-empty"><strong>Start a real production project</strong><span>Create a project to get scenes, a shot list, take logging and continuity tracking.</span></div> :
       <div className="workspace-body">
         <div className="workspace-tabs" role="tablist" aria-label="Production workspace">
-          <button className={filmTab === 'story' ? 'active' : ''} onClick={() => { setFilmTab('story'); syncStoryDraft(filmProject); }}>Story & World</button>
-          <button className={filmTab === 'shots' ? 'active' : ''} onClick={() => setFilmTab('shots')}>Shot List</button>
-          <button className={filmTab === 'takes' ? 'active' : ''} onClick={() => setFilmTab('takes')}>Camera / Takes</button>
-          <button className={filmTab === 'continuity' ? 'active' : ''} onClick={() => setFilmTab('continuity')}>Continuity</button>
-          <button className={filmTab === 'assets' ? 'active' : ''} onClick={() => setFilmTab('assets')}>Media Assets</button>
-          <button className={filmTab === 'assistant' ? 'active' : ''} onClick={() => setFilmTab('assistant')}>AI Help</button>
+          <button role="tab" aria-selected={filmTab === 'story'} className={filmTab === 'story' ? 'active' : ''} onClick={() => { setFilmTab('story'); syncStoryDraft(filmProject); }}>Story & World</button>
+          <button role="tab" aria-selected={filmTab === 'shots'} className={filmTab === 'shots' ? 'active' : ''} onClick={() => setFilmTab('shots')}>Shot List</button>
+          <button role="tab" aria-selected={filmTab === 'takes'} className={filmTab === 'takes' ? 'active' : ''} onClick={() => setFilmTab('takes')}>Camera / Takes</button>
+          <button role="tab" aria-selected={filmTab === 'continuity'} className={filmTab === 'continuity' ? 'active' : ''} onClick={() => setFilmTab('continuity')}>Continuity</button>
+          <button role="tab" aria-selected={filmTab === 'assets'} className={filmTab === 'assets' ? 'active' : ''} onClick={() => setFilmTab('assets')}>Media Assets</button>
+          <button role="tab" aria-selected={filmTab === 'assistant'} className={filmTab === 'assistant' ? 'active' : ''} onClick={() => setFilmTab('assistant')}>AI Help</button>
         </div>
 
         {(filmTab === 'shots' || filmTab === 'takes' || filmTab === 'assets') && <div className="production-tool-dock">
