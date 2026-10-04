@@ -18,7 +18,6 @@ import { createProductionRunner } from './orchestration/production-runner.js';
 import { createJobQueue } from './jobs/queue.js';
 import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains, getKnowledgeForTask, validateKnowledgeReferences } from './knowledge/base.js';
 import { normalizeSoundPlan } from './sound/schema.js';
-import { createDatasetRecord } from './dataset/manifest.js';
 import { evaluateVideoFile } from './evaluation/video-qc.js';
 import { validateGenerateInput, validateMediaGenerateInput, validateProductionGraphInput } from './validation.js';
 import { buildMediaPlan } from './planning/media-planner.js';
@@ -158,14 +157,6 @@ async function finalizeGeneratedMedia({ record, task, result, worker }) {
   }
 
   record.qualityControl = evaluation;
-  const datasetRecord = createDatasetRecord({
-    task,
-    result: { ...result, output: record.output, generationId: record.id },
-    worker,
-    evaluation,
-    soundPlan: task.sound || null,
-    knowledgeRefs: task.metadata?.knowledgeRefs || []
-  });
   let database = { enabled: false, persisted: false };
   try {
     const persisted = await saveGenerationToDatabase(datasetRecord);
