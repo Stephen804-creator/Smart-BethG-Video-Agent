@@ -354,6 +354,7 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
 
 async function linkGenerationToFilmShot(input = {}, result = {}) {
   const projectId = input.projectId || input.metadata?.projectId;
+  const ownerUserId = input.ownerUserId || input.metadata?.ownerUserId || null;
   const shotId = input.shotId || input.metadata?.shotId;
   if (!projectId || !shotId || !result?.generation) return result;
 
@@ -421,6 +422,7 @@ async function executeCanonicalGeneration(input = {}) {
     const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
     const result = await generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId });
+    if (result.generation) result.generation.ownerUserId = input.ownerUserId || null;
     return linkGenerationToFilmShot(input, result);
   }
   if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
@@ -428,6 +430,7 @@ async function executeCanonicalGeneration(input = {}) {
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
     const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
     const result = await generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model });
+    if (result.generation) result.generation.ownerUserId = input.ownerUserId || null;
     return linkGenerationToFilmShot(input, result);
   }
   if (selectedProvider === 'comfyui') {
@@ -437,7 +440,7 @@ async function executeCanonicalGeneration(input = {}) {
     const safeComfyUrl = await assertSafeComfyUrl(settings.comfyUrl);
     const worker = await createComfyWorker({ baseUrl: safeComfyUrl, workflowPath: comfyWorkflowPath, outputDir });
     const generated = await worker.execute(task);
-    const record = { id: 'gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source };
+    const record = { id: 'gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), ownerUserId: input.ownerUserId || null, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source };
     const qualityControl = await finalizeGeneratedMedia({ record, task, result: generated, worker: { id: worker.id, provider: 'comfyui', runtime: worker.runtime } });
     return linkGenerationToFilmShot(input, { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database });
   }
@@ -925,7 +928,7 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
     const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
-    const job = generationQueue.enqueue('media-generation', () => executeCanonicalGeneration({ ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true }));
+    const job = generationQueue.enqueue('media-generation', () => executeCanonicalGeneration({ ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId: getSessionUserId(req) }));
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue media generation.' });
@@ -977,14 +980,14 @@ app.post('/api/settings', (req, res) => {
 });
 
 app.get('/api/generations', async (req, res) => {
-  try { res.json({ records: await listGenerationsFromDatabase(req.query.limit) }); } catch (error) { res.status(503).json({ error: error?.message || 'Generation history is unavailable.' }); }
+  try { res.json({ records: await listGenerationsFromDatabase(req.query.limit, getSessionUserId(req)) }); } catch (error) { res.status(503).json({ error: error?.message || 'Generation history is unavailable.' }); }
 });
 
 
 app.post('/api/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateGenerateInput(req.body || {});
-    const job = generationQueue.enqueue('video-generation', () => executeCanonicalGeneration(input));
+    const job = generationQueue.enqueue('video-generation', () => executeCanonicalGeneration({ ...input, ownerUserId: getSessionUserId(req) }));
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue video generation.' });
