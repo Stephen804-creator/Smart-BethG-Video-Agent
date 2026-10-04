@@ -69,6 +69,19 @@ export function createFilmStore(filePath) {
       return Object.values(read().projects).map(view).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     },
 
+    exportData() {
+      return read();
+    },
+
+    replaceProjects(projects = []) {
+      const data = { projects: {} };
+      for (const project of projects) {
+        if (project?.id) data.projects[project.id] = project;
+      }
+      write(data);
+      return Object.values(data.projects).map(view);
+    },
+
     getProject(projectId) {
       const d = read();
       return d.projects[projectId] ? view(d.projects[projectId]) : null;
