@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { Icon } from './icons.jsx';
@@ -699,6 +698,8 @@ function App() {
             {!filmProjects.length && <span className="hint">No film projects yet. Start one when you are ready.</span>}
           </div>
         </div>
+      </div>
+    </section>}
     {showWorkspaceMenu && filmMode && <section className="panel film-assistant">
       <div className="section-head">
         <div><h2><Icon name="WandSparkles" size={18}/> Director Assistant</h2><span className="hint">Use normal filmmaking language. The agent turns your idea into scenes, shots, continuity and production tasks.</span></div>
