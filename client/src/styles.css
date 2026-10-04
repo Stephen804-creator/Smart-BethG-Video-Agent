@@ -2081,3 +2081,19 @@ html[data-density="compact"] .nav-item {
     bottom: 74px;
   }
 }
+
+/* Readability overrides */
+.hint, .panel label, .panel small, .dashboard-card span, .dashboard-item small, .tool-panel-head span,
+.tool-note, .assistant-result span, .checklist span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.tag {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+.panel input, .panel textarea, .panel select {
+  color: var(--text);
+}
