@@ -270,7 +270,7 @@ async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000) 
   return finalData;
 }
 
-async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId }) {
+async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId }) {
   const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
   const hasVisualReference = Boolean(reference?.output);
   const continuityPrompt = reference ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.' : '';
@@ -314,7 +314,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   const filepath = path.join(outputDir, filename);
   fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
   const actualDuration = await probeDuration(filepath);
-  const record = { id, createdAt: new Date().toISOString(), provider: 'huggingface', space, model: 'LTX Video 0.9.8 13B Distilled', mode, prompt, generatedPrompt: shotPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: Number(duration), duration: actualDuration ?? Number(duration), estimatedCostUsd: estimateGenerationCost({ provider: 'huggingface', duration: Number(duration) }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'huggingface', duration: Number(duration) }).source, durationMeasured: actualDuration !== null, ratio, height: dimensions.height, width: dimensions.width, seed, output: `/output/${filename}` };
+  const record = { id, ownerUserId: ownerUserId || null, createdAt: new Date().toISOString(), provider: 'huggingface', space, model: 'LTX Video 0.9.8 13B Distilled', mode, prompt, generatedPrompt: shotPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: Number(duration), duration: actualDuration ?? Number(duration), estimatedCostUsd: estimateGenerationCost({ provider: 'huggingface', duration: Number(duration) }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'huggingface', duration: Number(duration) }).source, durationMeasured: actualDuration !== null, ratio, height: dimensions.height, width: dimensions.width, seed, output: `/output/${filename}` };
   const task = normalizeMediaTask({
     operation: mode === 'video-to-video' ? 'video-to-video' : 'text-to-video',
     prompt,
@@ -329,7 +329,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   return { provider: 'Hugging Face • LTX Video', status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
-async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model }) {
+async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId }) {
   const settings = readSettings();
   const apiKey = settings.lumaApiKey || process.env.LUMAAI_API_KEY || '';
   const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
@@ -352,7 +352,7 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   const filepath = path.join(outputDir, filename);
   fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
   const actualDuration = await probeDuration(filepath);
-  const record = { id, createdAt: new Date().toISOString(), provider: 'luma', model: generation.model || model, mode: 'text-to-video', prompt, generatedPrompt: finalPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: null, duration: actualDuration, estimatedCostUsd: estimateGenerationCost({ provider: 'luma', duration: actualDuration || 5 }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'luma', duration: actualDuration || 5 }).source, durationMeasured: actualDuration !== null, ratio, width: null, height: null, providerGenerationId: generation.id, output: `/output/${filename}` };
+  const record = { id, ownerUserId: ownerUserId || null, createdAt: new Date().toISOString(), provider: 'luma', model: generation.model || model, mode: 'text-to-video', prompt, generatedPrompt: finalPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: null, duration: actualDuration, estimatedCostUsd: estimateGenerationCost({ provider: 'luma', duration: actualDuration || 5 }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'luma', duration: actualDuration || 5 }).source, durationMeasured: actualDuration !== null, ratio, width: null, height: null, providerGenerationId: generation.id, output: `/output/${filename}` };
   const task = normalizeMediaTask({
     operation: 'text-to-video',
     prompt,
@@ -435,15 +435,14 @@ async function executeCanonicalGeneration(input = {}) {
     if (operation !== 'text-to-video' && operation !== 'video-to-video') throw new Error('LTX currently supports text-to-video and continuity video-to-video in this pipeline.');
     const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
-    const result = await generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId });
-    if (result.generation) result.generation.ownerUserId = input.ownerUserId || null;
+    const result = await generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId: input.ownerUserId });
     return linkGenerationToFilmShot(input, result);
   }
   if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
     if (operation !== 'text-to-video') throw new Error('Luma adapter currently supports text-to-video only.');
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
     const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
-    const result = await generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model });
+    const result = await generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId: input.ownerUserId });
     if (result.generation) result.generation.ownerUserId = input.ownerUserId || null;
     return linkGenerationToFilmShot(input, result);
   }
