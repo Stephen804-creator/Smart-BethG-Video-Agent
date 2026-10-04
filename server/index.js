@@ -29,7 +29,7 @@ import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
-import { renderShot } from './render/ffmpeg.js';
+import { renderShot, renderTimeline } from './render/ffmpeg.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -543,6 +543,33 @@ app.post('/api/film/projects/:projectId/assets', (req, res) => {
   const asset = filmStore.addAsset(req.params.projectId, req.body || {});
   if (!asset) return res.status(404).json({ error: 'Film project not found.' });
   res.status(201).json({ asset });
+});
+
+app.post('/api/film/projects/:projectId/export', async (req, res) => {
+  try {
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Film project not found.' });
+    const orderedShots = (project.shots || []).slice().sort((a, b) => {
+      const sa = project.scenes?.find(s => s.id === a.sceneId)?.sequence || 0;
+      const sb = project.scenes?.find(s => s.id === b.sceneId)?.sequence || 0;
+      return sa - sb || (a.sequence || 0) - (b.sequence || 0);
+    });
+    const clips = [];
+    for (const shot of orderedShots) {
+      const take = (project.takes || []).find(t => t.id === shot.selectedTakeId) || (project.takes || []).find(t => t.shotId === shot.id);
+      const asset = take?.assetId ? (project.assets || []).find(a => a.id === take.assetId) : null;
+      if (!asset?.filename) continue;
+      const inputPath = path.resolve(assetDir, path.basename(asset.filename));
+      if (!inputPath.startsWith(path.resolve(assetDir) + path.sep) || !fs.existsSync(inputPath)) continue;
+      clips.push({ shotId: shot.id, inputPath, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
+    }
+    if (!clips.length) return res.status(400).json({ error: 'No usable selected takes are available for export.' });
+    const rendered = await renderTimeline({ clips, outputDir });
+    const evaluation = await evaluateVideoFile(rendered.outputPath, { frameOutputRoot: path.join(dataDir, 'evaluation-frames') });
+    res.status(201).json({ export: rendered, evaluation });
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Could not export film.' });
+  }
 });
 
 app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) => {
