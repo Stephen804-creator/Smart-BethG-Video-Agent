@@ -14,24 +14,28 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
       startedAt: job.startedAt || null,
       completedAt: job.completedAt || null,
       result: job.result || null,
-      error: job.error || null
+      error: job.error || null,
+      cancelledAt: job.cancelledAt || null,
+      attempts: job.attempts || 1
     };
   }
 
   async function drain() {
     while (active < concurrency && pending.length) {
       const job = pending.shift();
-      if (!job) continue;
+      if (!job || job.status === 'cancelled') continue;
       active += 1;
       job.status = 'running';
       job.startedAt = new Date().toISOString();
       Promise.resolve()
         .then(job.task)
         .then(result => {
+          if (job.cancelRequested) { job.status = 'cancelled'; job.cancelledAt = new Date().toISOString(); return; }
           job.status = 'completed';
           job.result = result;
         })
         .catch(error => {
+          if (job.cancelRequested) { job.status = 'cancelled'; job.cancelledAt = new Date().toISOString(); return; }
           job.status = 'failed';
           job.error = error?.message || 'Job failed.';
         })
@@ -54,7 +58,10 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
       type,
       status: 'queued',
       createdAt: new Date().toISOString(),
-      task
+      task,
+      taskFactory: task,
+      attempts: 1,
+      cancelRequested: false
     };
     jobs.set(job.id, job);
     pending.push(job);
@@ -67,5 +74,47 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
     return job ? snapshot(job) : null;
   }
 
-  return { enqueue, get, size: () => pending.length + active };
+  function cancel(id) {
+    const job = jobs.get(id);
+    if (!job) return null;
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') return snapshot(job);
+    job.cancelRequested = true;
+    if (job.status === 'queued') {
+      job.status = 'cancelled';
+      job.cancelledAt = new Date().toISOString();
+    }
+    return snapshot(job);
+  }
+
+  function retry(id) {
+    const original = jobs.get(id);
+    if (!original) return null;
+    if (!['failed', 'cancelled'].includes(original.status)) {
+      const error = new Error('Only failed or cancelled jobs can be retried.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const retryJob = {
+      id: crypto.randomUUID(),
+      type: original.type,
+      status: 'queued',
+      createdAt: new Date().toISOString(),
+      task: original.taskFactory,
+      taskFactory: original.taskFactory,
+      attempts: (original.attempts || 1) + 1,
+      retryOf: original.id,
+      cancelRequested: false
+    };
+    if (pending.length >= maxQueue) {
+      const error = new Error('Generation queue is full. Try again later.');
+      error.statusCode = 429;
+      throw error;
+    }
+    jobs.set(retryJob.id, retryJob);
+    pending.push(retryJob);
+    void drain();
+    return snapshot(retryJob);
+  }
+
+  return { enqueue, get, cancel, retry, size: () => pending.length + active };
 }
