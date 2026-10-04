@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { Icon } from './icons.jsx';
@@ -22,8 +21,6 @@ function App() {
   const [providers, setProviders] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [referenceGenerationId, setReferenceGenerationId] = useState(null);
-  const [sequences, setSequences] = useState([]);
-  const [sequenceId, setSequenceId] = useState('');
   const [newSequenceTitle, setNewSequenceTitle] = useState('');
   const [mediaFormats, setMediaFormats] = useState([]);
   const [selectedFormat, setSelectedFormat] = useState('cinematic');
@@ -161,15 +158,6 @@ function App() {
     setAuthenticated(false);
   }
 
-  async function loadSequences() {
-    try {
-      const r = await apiFetch( '/sequences');
-      const data = await r.json();
-      setSequences(data.sequences || []);
-      if (!sequenceId && data.sequences?.[0]) setSequenceId(data.sequences[0].id);
-    } catch {}
-  }
-
   useEffect(() => {
     fetch(API + '/auth/status', { credentials: 'include' }).then(r => r.json()).then(data => { setAuthenticated(Boolean(data.authenticated)); setAuthReady(true); }).catch(() => setAuthReady(true));
   }, []);
@@ -177,23 +165,11 @@ function App() {
   useEffect(() => {
     if (!authenticated) return;
     apiFetch('/providers?task=text-to-video&allowPaid=true').then(r => r.json()).then(data => setProviders(data.providers || [])).catch(() => {});
-    loadSequences();
     loadFilmProjects();
     apiFetch('/media-formats').then(r => r.json()).then(data => setMediaFormats(data.formats || [])).catch(() => {});
   }, [authenticated]);
 
   useEffect(() => { if (filmMode) loadFilmProjects(); }, [filmMode]);
-
-  async function createSequence() {
-    const r = await apiFetch( '/sequences', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newSequenceTitle || 'Untitled Sequence' }) });
-    const data = await r.json();
-    if (data.sequence) {
-      setSequences(prev => [data.sequence, ...prev]);
-      setSequenceId(data.sequence.id);
-      setNewSequenceTitle('');
-      setStatus('New sequence created');
-    }
-  }
 
   async function exportFilm() {
     if (!filmProjectId) return;
@@ -254,14 +230,26 @@ function App() {
     }
   }
 
-  async function addResultToSequence() {
+  async function importResultToProject() {
     const generationId = result?.generation?.id;
-    if (!generationId || !sequenceId) return;
-    const r = await apiFetch( '/sequences/' + sequenceId + '/shots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ generationId }) });
-    const data = await r.json();
-    if (data.sequence) {
-      setSequences(prev => prev.map(item => item.id === data.sequence.id ? data.sequence : item));
-      setStatus('Shot added to sequence');
+    if (!generationId || !filmProjectId) {
+      notify('Select a film project before adding this generation.', 'error');
+      return;
+    }
+    try {
+      const r = await apiFetch('/film/projects/' + filmProjectId + '/import-generation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generationId })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not add generation to project.');
+      setFilmProject(data.project);
+      setFilmProjects(prev => prev.map(p => p.id === data.project.id ? data.project : p));
+      notify('Generation added as a project take', 'success');
+      setStatus('Generation added to film project');
+    } catch (e) {
+      notify(e.message || 'Could not add generation to project', 'error');
     }
   }
 
@@ -625,7 +613,6 @@ function App() {
     if (r.ok) setFilmProject(data.project);
   }
 
-  const activeSequence = sequences.find(item => item.id === sequenceId);
   const filmShots = filmProject?.shots || [];
   const filmTakes = filmProject?.takes || [];
 
@@ -695,7 +682,7 @@ function App() {
     {showWorkspaceMenu && <section className="panel dashboard-panel">
       <div className="section-head">
         <div><div className="eyebrow">WORKSPACE</div><h2>Production dashboard</h2><span className="hint">Resume a project or continue a visual sequence without searching through the workspace.</span></div>
-        <span className="tag">{filmProjects.length} projects · {sequences.length} sequences</span>
+        <span className="tag">{filmProjects.length} projects · {filmProjects.reduce((n, p) => n + (p.shots?.length || 0), 0)} shots</span>
       </div>
       <div className="dashboard-grid">
         <div className="dashboard-card dashboard-new">
@@ -1175,7 +1162,7 @@ function App() {
           {result.generation && <div className="meta"><span>{result.generation.model}</span><span>{result.generation.mode}</span>{result.generation.duration != null && <span>{result.generation.duration}s</span>}{result.generation.width && <span>{result.generation.width}×{result.generation.height}</span>}{result.generation.estimatedCostUsd != null && <span>Est. ${result.generation.estimatedCostUsd}</span>}</div>}
           <div className="actions">
             {result.videoUrl && <a href={result.videoUrl} download className="button">Download</a>}
-            <button disabled={!sequenceId} onClick={addResultToSequence}>Add to sequence</button>
+            <button disabled={!result?.generation?.id || !filmProjectId} onClick={importResultToProject}><Icon name="Plus" size={15}/> Add to film project</button>
             <button onClick={() => { if (result?.generation?.id) { setReferenceGenerationId(result.generation.id); setPrompt(prompt + ' Continue the same scene while preserving the character, clothing, location and visual identity. Change only what this new shot description requests.'); setStatus('Visual continuity reference selected'); } }}>Use as next shot</button>
           </div>
         </div>}
