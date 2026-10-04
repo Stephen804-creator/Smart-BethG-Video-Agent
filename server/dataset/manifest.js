@@ -3,6 +3,7 @@ import fs from 'fs';
 
 export function createDatasetRecord({ task, result, evaluation = {}, worker = {}, soundPlan = null, knowledgeRefs = [] }) {
   return {
+    id: result?.generationId || result?.promptId || crypto.randomUUID(),
     dataset_id: crypto.randomUUID(),
     schema_version: 'media-dataset-v1',
     created_at: new Date().toISOString(),
