@@ -13,10 +13,22 @@ function lumaHeaders(apiKey) {
 }
 
 async function lumaRequest(apiKey, url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: { ...lumaHeaders(apiKey), ...(options.headers || {}) }
-  });
+  const timeoutMs = options.timeoutMs || 30_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: { ...lumaHeaders(apiKey), ...(options.headers || {}) }
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error(`Luma request timed out after ${Math.round(timeoutMs / 1000)} seconds.`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
   const text = await response.text();
   let data;
   try {
