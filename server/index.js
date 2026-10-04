@@ -212,7 +212,7 @@ async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000) 
 }
 
 async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId }) {
-  const reference = referenceGenerationId ? findGeneration(referenceGenerationId) : null;
+  const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
   const hasVisualReference = Boolean(reference?.output);
   const continuityPrompt = reference ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.' : '';
   const shotPrompt = buildShotPrompt({ prompt: [continuityPrompt, prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
@@ -273,7 +273,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
 async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model }) {
   const settings = readSettings();
   const apiKey = settings.lumaApiKey || process.env.LUMAAI_API_KEY || '';
-  const reference = referenceGenerationId ? findGeneration(generationsFile, referenceGenerationId) : null;
+  const reference = referenceGenerationId ? findGeneration(referenceGenerationId) : null;
   const finalPrompt = buildShotPrompt({ prompt: [reference ? 'Preserve the established visual identity from the previous shot.' : '', prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
   const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2' });
   const downloadController = new AbortController();
@@ -303,7 +303,6 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
     metadata: { framing, cameraMovement, lighting, model: record.model }
   });
   const qualityControl = await finalizeGeneratedMedia({ record, task, result: { generationId: record.providerGenerationId }, worker: { id: 'luma-api', provider: 'luma', runtime: 'luma-api' } });
-  appendGeneration(record);
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
@@ -826,7 +825,7 @@ app.post('/api/settings', (req, res) => {
   res.status(410).json({ error: 'Provider secrets are server-managed. Set HF_TOKEN, LUMAAI_API_KEY and COMFYUI_URL in the deployment environment.' });
 });
 
-app.get('/api/generations', (req, res) => {
+app.get('/api/generations', async (req, res) => {
   try { res.json({ records: await listGenerationsFromDatabase(req.query.limit) }); } catch (error) { res.status(503).json({ error: error?.message || 'Generation history is unavailable.' }); }
 });
 
