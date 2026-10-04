@@ -201,7 +201,7 @@ function App() {
       const r = await apiFetch('/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId })
+        body: JSON.stringify({ provider, prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId, projectId: filmProjectId || null, shotId: editDraft?.shotId || selectedShotId || null })
       });
       const queued = await r.json();
       if (!r.ok) throw new Error(queued.error || 'Could not queue generation.');
