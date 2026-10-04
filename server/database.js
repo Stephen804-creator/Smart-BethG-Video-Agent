@@ -266,3 +266,22 @@ export async function resolveEntityStateAt(projectId, entityId, sceneId = null, 
     resolved_at: { scene_id: sceneId, shot_id: shotId }
   };
 }
+
+export async function saveFilmProjectToDatabase(project) {
+  const db = getPool();
+  if (!db || !project?.id) return false;
+  await db.query(
+    `INSERT INTO media_projects (id, name, metadata)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, metadata=EXCLUDED.metadata`,
+    [project.id, project.title || 'Untitled Film', JSON.stringify(project)]
+  );
+  return true;
+}
+
+export async function listFilmProjectsFromDatabase() {
+  const db = getPool();
+  if (!db) return [];
+  const result = await db.query('SELECT metadata FROM media_projects ORDER BY updated_at DESC NULLS LAST, created_at DESC');
+  return result.rows.map(row => row.metadata).filter(project => project && project.id);
+}
