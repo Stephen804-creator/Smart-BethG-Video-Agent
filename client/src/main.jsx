@@ -816,7 +816,7 @@ function App() {
               ['import','Upload','Import'],['organize','FolderOpen','Organize'],['inspect','Search','Inspect'],['attach','Link','Attach'],['integrity','Shield','Integrity']
             ] : [
               ['review','Brain','Review'],['coverage-ai','Camera','Coverage'],['continuity-ai','RefreshCw','Continuity'],['next-step','ArrowRight','Next step']
-            ]).map(([id,icon,label]) => <button key={id} className={workspaceTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setWorkspaceTool(workspaceTool === id ? '' : id)} title={label}><span>{icon}</span><small>{label}</small></button>)}
+            ]).map(([id,icon,label]) => <button key={id} className={workspaceTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setWorkspaceTool(workspaceTool === id ? '' : id)} title={label}><span><Icon name={icon} size={16}/></span><small>{label}</small></button>)}
           </div>
 
           {filmTab === 'story' && workspaceTool === 'premise' && <div className="workspace-tool-panel">
