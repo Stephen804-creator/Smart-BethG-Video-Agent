@@ -1206,7 +1206,6 @@ function App() {
       {result?.generation && <div className="inspector-section"><strong>Result metadata</strong><div className="metadata-list"><span>Model <b>{result.generation.model || '—'}</b></span><span>Duration <b>{result.generation.duration ?? '—'}s</b></span><span>Ratio <b>{result.generation.ratio || ratio}</b></span><span>Est. cost <b>{result.generation.estimatedCostUsd == null ? 'Not configured' : '<span>Estimated cost <b>{result.generation.estimatedCostUsd != null ? '$' + result.generation.estimatedCostUsd : 'Not configured'}</b></span><span>QC <b>{result.qualityControl?.decision || 'Pending'}</b></span></div></div>}
     </aside>
     <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent film timeline</footer>
-    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
     {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
     {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>}
   </div>;
