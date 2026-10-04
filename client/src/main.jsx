@@ -590,19 +590,6 @@ function App() {
       </div>
     </header>
 
-    {false && <aside className="workspace-menu">
-      <div className="menu-title"><strong>Workspace</strong><span>Production tools</span></div>
-      <button onClick={() => { setFilmMode(true); setFilmTab('story'); setShowWorkspaceMenu(false); }}>📖 <span>Story & World</span></button>
-      <button onClick={() => { setFilmMode(true); setFilmTab('shots'); setShowWorkspaceMenu(false); }}>🎬 <span>Scenes & Shots</span></button>
-      <button onClick={() => { setFilmMode(true); setFilmTab('takes'); setShowWorkspaceMenu(false); }}>🎥 <span>Takes & Camera</span></button>
-      <button onClick={() => { setFilmMode(true); setFilmTab('continuity'); setShowWorkspaceMenu(false); }}>🔗 <span>Continuity</span></button>
-      <button onClick={() => { setFilmMode(true); setFilmTab('assets'); setShowWorkspaceMenu(false); }}>🗂️ <span>Media Assets</span></button>
-      <button onClick={() => { setFilmMode(true); setFilmTab('assistant'); setShowWorkspaceMenu(false); }}>✦ <span>AI Production Help</span></button>
-      <button onClick={() => { setFilmMode(false); setShowWorkspaceMenu(false); }}>⌂ <span>Generator</span></button>
-      <div className="menu-divider"/><button className="menu-settings" onClick={() => setShowSettings(!showSettings)}>⚙ <span>Appearance</span></button>
-      <small>Provider credentials and API secrets are not editable here. They belong in server-side environment configuration.</small>
-    </aside>}
-
     {showSettings && <section className="panel settings appearance-panel"><h2>Appearance</h2><p className="hint">Visual preferences will live here. Provider credentials remain server-side environment configuration and are never exposed as user-editable workspace fields.</p><label>Interface density<select value={density} onChange={e => setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></section>}
 
     {showWorkspaceMenu && <section className="panel dashboard-panel">
@@ -684,7 +671,7 @@ function App() {
       </div>
       {!filmProject ? <div className="workspace-empty"><strong>Start a real production project</strong><span>Create a project to get scenes, a shot list, take logging and continuity tracking.</span></div> :
       <div className="workspace-body">
-        <div className="workspace-tabs">
+        <div className="workspace-tabs" role="tablist" aria-label="Production workspace">
           <button className={filmTab === 'story' ? 'active' : ''} onClick={() => { setFilmTab('story'); syncStoryDraft(filmProject); }}>Story & World</button>
           <button className={filmTab === 'shots' ? 'active' : ''} onClick={() => setFilmTab('shots')}>Shot List</button>
           <button className={filmTab === 'takes' ? 'active' : ''} onClick={() => setFilmTab('takes')}>Camera / Takes</button>
@@ -698,7 +685,7 @@ function App() {
             <div><strong>Production tools</strong><span>Open only the tool group you need for the current shot or take.</span></div>
             <button className="tool-collapse" onClick={() => setProductionTool('')}>Collapse</button>
           </div>
-          <div className="production-tool-icons">
+          <div className="production-tool-icons" role="tablist" aria-label="Production tools">
             {[
               ['shot','Clapperboard','Shot'],
               ['camera','Camera','Camera'],
@@ -707,7 +694,7 @@ function App() {
               ['audio','Volume','Audio'],
               ['layers','Layers','Layers'],
               ['timing','Timer','Timing']
-            ].map(([id,icon,label]) => <button key={id} className={productionTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setProductionTool(productionTool === id ? '' : id)} title={label + ' tools'}><span><Icon name={icon} size={16}/></span><small>{label}</small></button>)}
+            ].map(([id,icon,label]) => <button key={id} role="tab" aria-selected={productionTool === id} className={productionTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setProductionTool(productionTool === id ? '' : id)} title={label + ' tools'}><span><Icon name={icon} size={16}/></span><small>{label}</small></button>)}
           </div>
 
           {productionTool === 'shot' && <div className="production-tool-panel">
