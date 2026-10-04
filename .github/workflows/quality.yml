@@ -22,7 +22,7 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Generate and verify lockfile
-        run: npm install --package-lock-only --ignore-scripts
+        run: npm ci --package-lock-only --ignore-scripts
 
       - name: Commit regenerated lockfile
         if: github.ref == 'refs/heads/main'
