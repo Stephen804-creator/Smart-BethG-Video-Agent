@@ -995,6 +995,24 @@ function App() {
               <button onClick={addFilmShot}>Add shot to production</button>
             </div>
             <div className="shot-list">{filmShots.map(s => <div className="shot-row" key={s.id}><div><b>Shot {s.number}</b><span>{s.framing} · {s.angle} · {s.lens || 'lens TBD'} · {s.movement}</span><small>{s.description || 'No description yet.'}</small></div><button onClick={() => { setFilmTab('takes'); setStatus('Log takes for Shot ' + s.number); }}>Log takes</button></div>)}</div>
+            <div className="timeline-editor" aria-label="Film timeline">
+              <div className="subhead"><strong>Timeline</strong><span className="hint">Ordered selected takes · {filmShots.filter(s => s.selectedTakeId).length} clips</span></div>
+              <div className="timeline-track">
+                {filmShots.map((shot, index) => {
+                  const take = filmTakes.find(t => t.id === shot.selectedTakeId) || filmTakes.find(t => t.shotId === shot.id);
+                  const asset = take ? filmAssets.find(a => a.id === take.assetId) : null;
+                  return <button key={shot.id} className="timeline-clip" onClick={() => { setEditDraft({...editDraft, shotId: shot.id}); setProductionTool('edit'); }}>
+                    <span className="timeline-index">{index + 1}</span>
+                    <b>Shot {shot.number}</b>
+                    <small>{take ? (asset?.name || 'Selected take') : 'No take'}</small>
+                    <em>{shot.duration || asset?.duration || 0}s</em>
+                  </button>;
+                })}
+                {!filmShots.length && <span className="hint">Add shots to build the timeline.</span>}
+              </div>
+              <div className="tool-actions"><button onClick={exportFilm} disabled={!filmProjectId || !filmShots.length}><Icon name="Download" size={15}/> Render & export timeline</button></div>
+            </div>
+
           </div>
         </div>}
 
