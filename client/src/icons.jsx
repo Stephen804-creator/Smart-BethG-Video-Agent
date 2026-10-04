@@ -25,6 +25,12 @@ const paths = {
   Shield: [['path',{d:'M12 3 20 7v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4Z'}]],
   Brain: [['path',{d:'M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0-2 5 3 3 0 0 0 3 4h2V4ZM15 4a3 3 0 0 1 3 3v1a3 3 0 0 1 2 5 3 3 0 0 1-3 4h-2V4Z'}],['path',{d:'M12 4v16M9 8h3M12 13h3'}]],
   RefreshCw: [['path',{d:'M20 11a8 8 0 0 0-14.9-3M4 5v4h4M4 13a8 8 0 0 0 14.9 3M20 19v-4h-4'}]],
+  User: [['circle',{cx:'12',cy:'8',r:'3'}],['path',{d:'M5 21a7 7 0 0 1 14 0'}]],
+  Globe: [['circle',{cx:'12',cy:'12',r:'9'}],['path',{d:'M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'}]],
+  ScrollText: [['path',{d:'M8 3h11v17H8a3 3 0 0 1 0-6h11'}],['path',{d:'M8 14H5a3 3 0 0 0 0 6'}]],
+  Box: [['path',{d:'m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z'}],['path',{d:'M4 7.5 12 12l8-4.5M12 12v9'}]],
+  ArrowLeftRight: [['path',{d:'M3 7h18l-4-4M21 17H3l4 4'}]],
+  Lightbulb: [['path',{d:'M9 18h6M10 22h4M8 14a6 6 0 1 1 8 0c-1 1-2 2-2 4h-4c0-2-1-3-2-4Z'}]],
   CircleAlert: [['circle',{cx:'12',cy:'12',r:'9'}],['path',{d:'M12 8v4M12 16h.01'}]],
   Check: [['path',{d:'m5 12 4 4L19 6'}]]
 };
