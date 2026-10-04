@@ -59,9 +59,6 @@ font-size:18px
 .composer {
 margin-bottom:18px
 }
-.sequence-panel {
-margin-bottom:18px
-}
 .section-head {
 display:flex;
 justify-content:space-between;
@@ -228,13 +225,6 @@ gap:15px
 .panel {
 padding:16px
 }
-.sequence-row {
-display:grid;
-grid-template-columns:1fr
-}
-.sequence-row button {
-width:100%
-}
 
 }
 .generate:disabled {
@@ -262,26 +252,6 @@ color:#8d97a1;
 border:1px solid #292f36;
 border-radius:999px;
 padding:5px 8px
-}
-.sequence-track {
-display:flex;
-gap:8px;
-flex-wrap:wrap;
-padding-top:4px
-}
-.sequence-track span {
-font-size:11px;
-color:#c8ced5;
-border:1px solid #30363e;
-border-radius:999px;
-padding:7px 10px;
-background:#0b0e12
-}
-.sequence-row select,.sequence-row input,.sequence-row button {
-margin-top:0
-}
-.sequence-row {
-align-items:center
 }
 .format-panel {
 margin-top:18px
