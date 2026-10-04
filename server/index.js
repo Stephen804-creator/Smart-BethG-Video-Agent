@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { Client, handle_file } from '@gradio/client';
 import { findGeneration } from './continuity.js';
-import { readSequences, createSequence, addShotToSequence } from './sequences.js';
 import { generateWithLuma } from './luma.js';
 import { listProviders } from './router/provider-registry.js';
 import { chooseProvider } from './router/scorer.js';
@@ -19,15 +18,16 @@ import { createProductionRunner } from './orchestration/production-runner.js';
 import { createJobQueue } from './jobs/queue.js';
 import { searchKnowledge, getKnowledgeEntry, listKnowledgeDomains, getKnowledgeForTask, validateKnowledgeReferences } from './knowledge/base.js';
 import { normalizeSoundPlan } from './sound/schema.js';
-import { createDatasetRecord, appendDatasetRecord } from './dataset/manifest.js';
+import { createDatasetRecord } from './dataset/manifest.js';
 import { evaluateVideoFile } from './evaluation/video-qc.js';
+import { validateGenerateInput, validateMediaGenerateInput, validateProductionGraphInput } from './validation.js';
 import { buildMediaPlan } from './planning/media-planner.js';
 import { buildFormatProductionPlan } from './planning/format-production-planner.js';
 import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot } from './render/ffmpeg.js';
@@ -38,10 +38,7 @@ const app = express();
 const port = Number(process.env.PORT || 8787);
 const outputDir = path.join(root, 'output');
 const dataDir = path.join(root, 'data');
-const generationsFile = path.join(dataDir, 'generations.jsonl');
-const datasetFile = path.join(dataDir, 'dataset-manifest.jsonl');
 const jobsFile = path.join(dataDir, 'production-jobs.jsonl');
-const sequencesFile = path.join(dataDir, 'sequences.json');
 const filmStore = createFilmStore(path.join(dataDir, 'film-projects.json'));
 
 const filmMutationMethods = ['createProject','updateProject','updateStory','addCharacter','updateCharacter','updateWorld','addScene','updateScene','addShot','updateShot','reorderScene','reorderShot','addTake','selectTake','addAsset','updateAsset','attachAssetToShot','attachAssetToTake','addContinuityEvent'];
@@ -112,10 +109,6 @@ function readSettings() {
   };
 }
 
-function appendGeneration(record) {
-  fs.appendFileSync(generationsFile, JSON.stringify(record) + '\n');
-}
-
 function dimensionsForRatio(ratio) {
   const dimensions = {
     '16:9': { height: 512, width: 896 },
@@ -173,8 +166,6 @@ async function finalizeGeneratedMedia({ record, task, result, worker }) {
     soundPlan: task.sound || null,
     knowledgeRefs: task.metadata?.knowledgeRefs || []
   });
-  appendDatasetRecord(datasetFile, datasetRecord);
-
   let database = { enabled: false, persisted: false };
   try {
     const persisted = await saveGenerationToDatabase(datasetRecord);
@@ -221,7 +212,7 @@ async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000) 
 }
 
 async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId }) {
-  const reference = referenceGenerationId ? findGeneration(generationsFile, referenceGenerationId) : null;
+  const reference = referenceGenerationId ? findGeneration(referenceGenerationId) : null;
   const hasVisualReference = Boolean(reference?.output);
   const continuityPrompt = reference ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.' : '';
   const shotPrompt = buildShotPrompt({ prompt: [continuityPrompt, prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
@@ -275,7 +266,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
     metadata: { framing, cameraMovement, lighting, model: record.model }
   });
   const qualityControl = await finalizeGeneratedMedia({ record, task, result: { generationId: record.id }, worker: { id: 'huggingface-ltx', provider: 'huggingface', runtime: 'gradio-space' } });
-  appendGeneration(record);
+
   return { provider: 'Hugging Face • LTX Video', status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
@@ -730,7 +721,8 @@ app.get('/api/workers', async (req, res) => {
 
 app.post('/api/media/generate', generationRateLimit, async (req, res) => {
   try {
-    const task = normalizeMediaTask(req.body || {});
+    const input = validateMediaGenerateInput(req.body || {});
+     const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
     if (req.body?.workerId && req.body.workerId !== 'comfyui-worker') return res.status(400).json({ error: 'Unknown worker.' });
@@ -811,23 +803,9 @@ app.post('/api/settings', (req, res) => {
 });
 
 app.get('/api/generations', (req, res) => {
-  try {
-    const lines = fs.readFileSync(generationsFile, 'utf8').trim().split('\n').filter(Boolean);
-    res.json({ records: lines.map(line => JSON.parse(line)).reverse() });
-  } catch { res.json({ records: [] }); }
+  try { res.json({ records: await listGenerationsFromDatabase(req.query.limit) }); } catch (error) { res.status(503).json({ error: error?.message || 'Generation history is unavailable.' }); }
 });
 
-app.get('/api/sequences', (req, res) => res.json({ sequences: readSequences(sequencesFile).reverse() }));
-
-app.post('/api/sequences', (req, res) => res.status(201).json({ sequence: createSequence(sequencesFile, req.body?.title) }));
-
-app.post('/api/sequences/:id/shots', (req, res) => {
-  const generationId = req.body?.generationId;
-  if (!generationId) return res.status(400).json({ error: 'generationId is required.' });
-  const sequence = addShotToSequence(sequencesFile, req.params.id, generationId);
-  if (!sequence) return res.status(404).json({ error: 'Sequence not found.' });
-  res.json({ sequence });
-});
 
 app.post('/api/generate', generationRateLimit, async (req, res) => {
   const { provider, prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId } = req.body || {};
