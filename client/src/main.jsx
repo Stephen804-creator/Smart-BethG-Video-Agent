@@ -21,7 +21,6 @@ function App() {
   const [providers, setProviders] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [referenceGenerationId, setReferenceGenerationId] = useState(null);
-  const [newSequenceTitle, setNewSequenceTitle] = useState('');
   const [mediaFormats, setMediaFormats] = useState([]);
   const [selectedFormat, setSelectedFormat] = useState('cinematic');
   const [genre, setGenre] = useState('action');
@@ -699,34 +698,6 @@ function App() {
             {!filmProjects.length && <span className="hint">No film projects yet. Start one when you are ready.</span>}
           </div>
         </div>
-        <div className="dashboard-card">
-          <div className="dashboard-card-head"><strong>Visual sequences</strong><span>{sequences.length}</span></div>
-          <div className="dashboard-list">
-            {sequences.slice(0, 4).map(sequence => <button key={sequence.id} className="dashboard-item" onClick={() => setSequenceId(sequence.id)}>
-              <span><b>{sequence.title}</b><small>{sequence.shots?.length || 0} shots</small></span><span>→</span>
-            </button>)}
-            {!sequences.length && <span className="hint">No visual sequences yet.</span>}
-          </div>
-        </div>
-      </div>
-    </section>}
-
-    {showWorkspaceMenu && <section className="panel sequence-panel">
-      <div className="section-head">
-        <div><h2>Film sequence</h2><span className="hint">Build the movie as ordered shots instead of isolated generations.</span></div>
-        <span className="tag">{activeSequence ? `${activeSequence.shots.length} shots` : 'No sequence'}</span>
-      </div>
-      <div className="row sequence-row">
-        <select value={sequenceId} onChange={e => setSequenceId(e.target.value)}>
-          {!sequences.length && <option value="">Create a sequence first</option>}
-          {sequences.map(item => <option key={item.id} value={item.id}>{item.title} · {item.shots.length} shots</option>)}
-        </select>
-        <input value={newSequenceTitle} onChange={e => setNewSequenceTitle(e.target.value)} placeholder="New sequence title"/>
-        <button onClick={createSequence}>New sequence</button>
-      </div>
-      {activeSequence && <div className="sequence-track">{activeSequence.shots.length ? activeSequence.shots.map((shot, index) => <span key={shot}>Shot {index + 1}</span>) : <span className="hint">No shots yet. Generate the first shot below.</span>}</div>}
-    </section>}
-
     {showWorkspaceMenu && filmMode && <section className="panel film-assistant">
       <div className="section-head">
         <div><h2><Icon name="WandSparkles" size={18}/> Director Assistant</h2><span className="hint">Use normal filmmaking language. The agent turns your idea into scenes, shots, continuity and production tasks.</span></div>
