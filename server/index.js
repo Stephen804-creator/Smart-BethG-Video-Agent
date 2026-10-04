@@ -59,12 +59,6 @@ app.use(express.json({ limit: '2mb' }));
 app.use('/output', authMiddleware, express.static(outputDir));
 app.use('/assets', authMiddleware, express.static(assetDir));
 
-app.get('/api/jobs/:jobId', (req, res) => {
-  const job = generationQueue.get(req.params.jobId);
-  if (!job) return res.status(404).json({ error: 'Job not found.' });
-  res.json({ job });
-});
-
 app.get('/api/auth/status', (req, res) => res.json({ ...getPublicAuthStatus(), authenticated: isAuthenticated(req) }));
 app.post('/api/auth/login', authRateLimit, (req, res) => {
   if (!process.env.APP_AUTH_PASSWORD) return res.status(503).json({ error: 'Authentication is not configured.' });
@@ -78,6 +72,12 @@ app.post('/api/auth/logout', (req, res) => { clearSessionCookie(res); res.json({
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
   return authMiddleware(req, res, () => apiRateLimit(req, res, next));
+});
+
+app.get('/api/jobs/:jobId', (req, res) => {
+  const job = generationQueue.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found.' });
+  res.json({ job });
 });
 
 function readSettings() {
