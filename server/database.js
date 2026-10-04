@@ -301,18 +301,20 @@ export async function saveFilmProjectToDatabase(project) {
   const db = getPool();
   if (!db || !project?.id) return false;
   await db.query(
-    `INSERT INTO media_projects (id, name, metadata, updated_at)
-     VALUES ($1,$2,$3,NOW())
-     ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, metadata=EXCLUDED.metadata, updated_at=NOW()`,
-    [project.id, project.title || 'Untitled Film', JSON.stringify(project)]
+    `INSERT INTO media_projects (id, owner_user_id, name, metadata, updated_at)
+     VALUES ($1,$2,$3,$4,NOW())
+     ON CONFLICT (id) DO UPDATE SET owner_user_id=COALESCE(EXCLUDED.owner_user_id, media_projects.owner_user_id), name=EXCLUDED.name, metadata=EXCLUDED.metadata, updated_at=NOW()`,
+    [project.id, project.ownerUserId || null, project.title || 'Untitled Film', JSON.stringify(project)]
   );
   return true;
 }
 
-export async function listFilmProjectsFromDatabase() {
+export async function listFilmProjectsFromDatabase(ownerUserId = null) {
   const db = getPool();
   if (!db) return [];
-  const result = await db.query('SELECT metadata FROM media_projects ORDER BY updated_at DESC, created_at DESC');
+  const result = ownerUserId
+    ? await db.query('SELECT metadata FROM media_projects WHERE owner_user_id=$1 OR owner_user_id IS NULL ORDER BY updated_at DESC, created_at DESC', [ownerUserId])
+    : await db.query('SELECT metadata FROM media_projects ORDER BY updated_at DESC, created_at DESC');
   return result.rows.map(row => row.metadata).filter(project => project && project.id);
 }
 
