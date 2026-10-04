@@ -311,6 +311,48 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   return { provider: `Luma • ${record.model}`, status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
+
+async function linkGenerationToFilmShot(input = {}, result = {}) {
+  const projectId = input.projectId || input.metadata?.projectId;
+  const shotId = input.shotId || input.metadata?.shotId;
+  if (!projectId || !shotId || !result?.generation) return result;
+
+  const videoUrl = result.videoUrl || result.generation.output?.asset || result.generation.output?.uri || result.generation.output || null;
+  if (!videoUrl) return result;
+
+  const filename = path.basename(String(videoUrl).split('?')[0]);
+  const asset = filmStore.addAsset(projectId, {
+    id: result.generation.id ? 'asset-' + result.generation.id : undefined,
+    name: 'Generated Take ' + new Date().toISOString(),
+    filename,
+    sourceType: 'generated',
+    uri: String(videoUrl),
+    sceneId: result.generation.sceneId || null,
+    shotId,
+    mimeType: 'video/mp4',
+    notes: JSON.stringify({
+      generationId: result.generation.id || null,
+      provider: result.generation.provider || result.provider || null,
+      model: result.generation.model || null
+    })
+  });
+  if (!asset) return result;
+
+  const take = filmStore.addTake(projectId, {
+    id: result.generation.id ? 'take-' + result.generation.id : undefined,
+    shotId,
+    assetId: asset.id,
+    mediaUri: String(videoUrl),
+    camera: result.generation.framing || input.framing || '',
+    lens: result.generation.lens || '',
+    notes: 'AI-generated take'
+  });
+  if (take) {
+    filmStore.selectTake(projectId, shotId, take.id);
+    result.film = { projectId, shotId, assetId: asset.id, takeId: take.id };
+  }
+  return result;
+}
 async function executeCanonicalGeneration(input = {}) {
   const requestedProvider = String(input.provider || input.providerId || 'auto');
   const operation = input.operation || 'text-to-video';
@@ -338,13 +380,15 @@ async function executeCanonicalGeneration(input = {}) {
     if (operation !== 'text-to-video' && operation !== 'video-to-video') throw new Error('LTX currently supports text-to-video and continuity video-to-video in this pipeline.');
     const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
-    return generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId });
+    const result = await generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId });
+    return linkGenerationToFilmShot(input, result);
   }
   if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
     if (operation !== 'text-to-video') throw new Error('Luma adapter currently supports text-to-video only.');
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
     const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
-    return generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model });
+    const result = await generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model });
+    return linkGenerationToFilmShot(input, result);
   }
   if (selectedProvider === 'comfyui') {
     const task = normalizeMediaTask({ ...input, operation, prompt, duration, aspectRatio: ratio, requirements: { ...(input.requirements || {}), duration, aspectRatio: ratio, quality: input.requirements?.quality || 'standard' }, metadata: { ...(input.metadata || {}), framing, cameraMovement, lighting } });
@@ -355,7 +399,7 @@ async function executeCanonicalGeneration(input = {}) {
     const generated = await worker.execute(task);
     const record = { id: 'gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source };
     const qualityControl = await finalizeGeneratedMedia({ record, task, result: generated, worker: { id: worker.id, provider: 'comfyui', runtime: worker.runtime } });
-    return { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
+    return linkGenerationToFilmShot(input, { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database });
   }
   throw new Error('Unknown provider.');
 }
