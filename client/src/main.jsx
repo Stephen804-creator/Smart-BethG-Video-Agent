@@ -326,6 +326,26 @@ function App() {
     setStatus('Character added to story bible');
   }
 
+  async function renderSelectedShot() {
+    if (!filmProjectId || !editDraft.shotId) return;
+    setStatus('Rendering shot with FFmpeg…');
+    try {
+      const response = await apiFetch('/film/projects/' + filmProjectId + '/shots/' + editDraft.shotId + '/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not render shot.');
+      const fresh = await apiFetch('/film/projects/' + filmProjectId);
+      const project = await fresh.json();
+      setFilmProject(project.project);
+      setStatus('Rendered shot saved as a new media asset');
+    } catch (error) {
+      setStatus(error.message || 'Shot render failed');
+    }
+  }
+
   async function saveShotProductionTools() {
     if (!filmProjectId || !editDraft.shotId) return;
     const r = await apiFetch( '/film/projects/' + filmProjectId + '/shots/' + editDraft.shotId, {
@@ -628,8 +648,8 @@ function App() {
               <label>Transition<select value={editDraft.transition} onChange={e => setEditDraft({...editDraft,transition:e.target.value})}><option>cut</option><option>cross dissolve</option><option>fade</option><option>dip to black</option><option>match cut</option></select></label>
               <label>Volume %<input type="number" min="0" max="200" value={editDraft.volume} onChange={e => setEditDraft({...editDraft,volume:Number(e.target.value)})}/></label>
             </div>
-            <div className="tool-actions"><button disabled={!editDraft.shotId} onClick={saveShotProductionTools}>Save shot edit settings</button></div>
-            <div className="tool-note">These settings are now stored as production metadata on the shot. The media render/export engine will apply the actual trim, transition and speed operations when connected.</div>
+            <div className="tool-actions"><button disabled={!editDraft.shotId} onClick={saveShotProductionTools}>Save shot edit settings</button><button disabled={!editDraft.shotId} onClick={renderSelectedShot}>Render shot</button></div>
+            <div className="tool-note">Render shot applies the supported trim, speed, basic look and master-volume operations to the selected take and saves a new media asset. Multi-shot transitions, background replacement and separate audio stems remain later-stage operations.</div>
           </div>}
 
           {productionTool === 'effects' && <div className="production-tool-panel">
