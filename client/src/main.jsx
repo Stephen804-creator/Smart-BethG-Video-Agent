@@ -1023,7 +1023,7 @@ function App() {
       <div className="setup-bar">
         <div className="format-picker">
           <button type="button" className={formatMenuOpen ? 'format-picker-button open' : 'format-picker-button'} onClick={() => setFormatMenuOpen(!formatMenuOpen)}>
-            <span className="format-picker-icon">{({ 'audio-story':'🎧', 'picture-story':'🖼️', 'motion-comic':'💥', cinematic:'🎬', anime:'🌸', documentary:'📽️', explainer:'📊' })[selectedFormat] || '🎞️'}</span>
+            <span className="format-picker-icon"><Icon name={({ 'audio-story':'Volume', 'picture-story':'Image', 'motion-comic':'Sparkles', cinematic:'Clapperboard', anime:'Sparkles', documentary:'Clapperboard', explainer:'LayoutDashboard' })[selectedFormat] || 'Clapperboard'} size={22}/></span>
             <span className="format-picker-copy">
               <b>{mediaFormats.find(f => f.id === selectedFormat)?.name || selectedFormat}</b>
               <small>Production format</small>
@@ -1032,9 +1032,9 @@ function App() {
           </button>
           {formatMenuOpen && <div className="format-menu">
             {mediaFormats.map(format => {
-              const icons = { 'audio-story': '🎧', 'picture-story': '🖼️', 'motion-comic': '💥', cinematic: '🎬', anime: '🌸', documentary: '📽️', explainer: '📊' };
+              const icons = { 'audio-story': 'Volume', 'picture-story': 'Image', 'motion-comic': 'Sparkles', cinematic: 'Clapperboard', anime: 'Sparkles', documentary: 'Clapperboard', explainer: 'LayoutDashboard' };
               return <button type="button" key={format.id} className={selectedFormat === format.id ? 'format-option active' : 'format-option'} onClick={() => { setSelectedFormat(format.id); setFormatMenuOpen(false); }}>
-                <span className="format-option-icon">{icons[format.id] || '🎞️'}</span>
+                <span className="format-option-icon"><Icon name={icons[format.id] || 'Clapperboard'} size={18}/></span>
                 <span><b>{format.name}</b><small>{format.description}</small></span>
                 {selectedFormat === format.id && <strong>✓</strong>}
               </button>;
