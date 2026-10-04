@@ -27,7 +27,7 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 
@@ -42,6 +42,21 @@ const datasetFile = path.join(dataDir, 'dataset-manifest.jsonl');
 const jobsFile = path.join(dataDir, 'production-jobs.jsonl');
 const sequencesFile = path.join(dataDir, 'sequences.json');
 const filmStore = createFilmStore(path.join(dataDir, 'film-projects.json'));
+
+const filmMutationMethods = ['createProject','updateProject','updateStory','addCharacter','updateCharacter','updateWorld','addScene','updateScene','addShot','updateShot','reorderScene','reorderShot','addTake','selectTake','addAsset','updateAsset','attachAssetToShot','attachAssetToTake','addContinuityEvent'];
+for (const method of filmMutationMethods) {
+  const original = filmStore[method].bind(filmStore);
+  filmStore[method] = (...args) => {
+    const result = original(...args);
+    const projectId = args[0] || result?.id;
+    const project = projectId && method !== 'createProject' ? filmStore.getProject(projectId) : result;
+    const snapshot = method === 'createProject' ? result : project;
+    if (snapshot?.id) {
+      saveFilmProjectToDatabase(snapshot).catch(error => console.error('Film project database mirror failed:', error?.message || error));
+    }
+    return result;
+  };
+}
 const assetDir = path.join(dataDir, 'assets');
 const assetStore = createAssetStore({ rootDir: assetDir });
 const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSize: 500 * 1024 * 1024 } });
@@ -864,7 +879,15 @@ if (fs.existsSync(clientDist)) {
 
 try { assertAuthConfigured(); } catch (error) { console.error(error.message); if (process.env.NODE_ENV === 'production') process.exit(1); }
 
-initDatabase().then(() => {
+initDatabase().then(async () => {
+  try {
+    if (filmStore.listProjects().length === 0) {
+      const persistedProjects = await listFilmProjectsFromDatabase();
+      if (persistedProjects.length) filmStore.replaceProjects(persistedProjects);
+    }
+  } catch (error) {
+    console.error('Film project database hydration skipped:', error?.message || error);
+  }
   app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
 }).catch(error => {
   console.error('Database initialization failed:', error?.message || error);
