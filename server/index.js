@@ -29,6 +29,7 @@ import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
+import { assertSafeComfyUrl } from './security/outbound.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -646,7 +647,8 @@ app.get('/api/knowledge/:id', (req, res) => {
 
 app.get('/api/workers', async (req, res) => {
   const settings = readSettings();
-  const worker = await createComfyWorker({ baseUrl: settings.comfyUrl, workflowPath: comfyWorkflowPath, outputDir });
+  const safeComfyUrl = await assertSafeComfyUrl(settings.comfyUrl);
+      const worker = await createComfyWorker({ baseUrl: safeComfyUrl, workflowPath: comfyWorkflowPath, outputDir });
   res.json({ workers: [{ id: worker.id, runtime: worker.runtime, configured: worker.configured, health: worker.health, workflowPathConfigured: Boolean(comfyWorkflowPath) }] });
 });
 
@@ -691,7 +693,8 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
 app.get('/api/providers', async (req, res) => {
   const settings = readSettings();
   const providers = listProviders(settings);
-  const comfy = await getComfyHealth(settings.comfyUrl);
+  let comfy = { ok: false, error: 'ComfyUI endpoint unavailable.' };
+        try { comfy = await getComfyHealth(await assertSafeComfyUrl(settings.comfyUrl)); } catch (error) { comfy = { ok: false, error: error.message }; }
   const enriched = providers.map(provider =>
     provider.id === 'comfyui'
       ? { ...provider, configured: comfy.ok, health: comfy }
