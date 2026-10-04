@@ -1,6 +1,8 @@
 import React from 'react';
 
 const paths = {
+  Plus: [['path',{d:'M12 5v14M5 12h14'}]],
+  Play: [['path',{d:'m9 6 10 6-10 6V6Z'}]],
   Menu: [['path',{d:'M4 6h16M4 12h16M4 18h16'}]],
   Clapperboard: [['path',{d:'M4 4h16v16H4zM4 9h16M8 4l3 5M14 4l3 5'}]],
   Sparkles: [['path',{d:'m12 3-1.5 5.5L5 10l5.5 1.5L12 17l1.5-5.5L19 10l-5.5-1.5L12 3ZM19 16l-.7 2.3L16 19l2.3.7L19 22l.7-2.3L22 19l-2.3-.7L19 16Z'}]],
