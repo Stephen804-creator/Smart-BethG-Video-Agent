@@ -718,8 +718,7 @@ app.post('/api/media/execution-plan', (req, res) => {
 
 app.post('/api/production/execute', generationRateLimit, async (req, res) => {
   try {
-    const graph = req.body?.productionGraph || req.body?.production_graph;
-    if (!graph) return res.status(400).json({ error: 'productionGraph is required.' });
+    const graph = validateProductionGraphInput(req.body || {});
     const job = generationQueue.enqueue('production-execution', async () => {
       const runner = createProductionRunner({
         outputDir,
@@ -743,10 +742,8 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
 
 app.get('/api/production/jobs/:projectId', (req, res) => {
   const runner = createProductionRunner({
-    outputDir,
     jobsFile,
-    settings: readSettings,
-    workflowPath: comfyWorkflowPath
+    executeTask: executeCanonicalGeneration
   });
   res.json({ jobs: runner.readJobs(req.params.projectId) });
 });
