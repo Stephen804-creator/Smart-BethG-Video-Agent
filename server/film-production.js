@@ -101,6 +101,7 @@ export function createFilmStore(filePath) {
         characters: [],
         world: { setting: '', rules: [], locations: [], factions: [], terminology: [] },
         format: 'cinematic',
+        ownerUserId: input.ownerUserId || null,
         createdAt: now,
         updatedAt: now,
         scenes: [],
