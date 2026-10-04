@@ -117,9 +117,16 @@ function appendGeneration(record) {
 }
 
 function dimensionsForRatio(ratio) {
-  if (ratio === '9:16') return { height: 896, width: 512 };
-  if (ratio === '1:1') return { height: 640, width: 640 };
-  return { height: 512, width: 896 };
+  const dimensions = {
+    '16:9': { height: 512, width: 896 },
+    '9:16': { height: 896, width: 512 },
+    '1:1': { height: 640, width: 640 },
+    '4:3': { height: 576, width: 768 },
+    '3:4': { height: 768, width: 576 },
+    '21:9': { height: 384, width: 896 },
+    '9:21': { height: 896, width: 384 }
+  };
+  return dimensions[ratio] || dimensions['16:9'];
 }
 
 function getVideoResult(data) {
