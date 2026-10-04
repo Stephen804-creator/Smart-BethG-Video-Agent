@@ -82,6 +82,8 @@ export async function initDatabase() {
       evaluation JSONB NOT NULL DEFAULT '{}'::jsonb,
       licensing JSONB NOT NULL DEFAULT '{}'::jsonb,
       dataset_id TEXT,
+      estimated_cost_usd NUMERIC,
+      actual_cost_usd NUMERIC,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -90,6 +92,8 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_media_generations_created ON media_generations(created_at DESC);
     ALTER TABLE media_projects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS dataset_id TEXT;
+    ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC;
+    ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS actual_cost_usd NUMERIC;
 
     CREATE TABLE IF NOT EXISTS media_knowledge_refs (
       generation_id TEXT NOT NULL,
@@ -122,13 +126,15 @@ export async function saveGenerationToDatabase(record) {
 
   await db.query(
     `INSERT INTO media_generations
-      (id, project_id, scene_id, shot_id, domain, operation, provider, worker_id, model, workflow, prompt, requirements, sound_plan, output, execution, evaluation, licensing, dataset_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      (id, project_id, scene_id, shot_id, domain, operation, provider, worker_id, model, workflow, prompt, requirements, sound_plan, output, execution, evaluation, licensing, dataset_id, estimated_cost_usd, actual_cost_usd)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      ON CONFLICT (id) DO UPDATE SET
        output=EXCLUDED.output,
        execution=EXCLUDED.execution,
        evaluation=EXCLUDED.evaluation,
-       dataset_id=COALESCE(EXCLUDED.dataset_id, media_generations.dataset_id)`,
+       dataset_id=COALESCE(EXCLUDED.dataset_id, media_generations.dataset_id),
+       estimated_cost_usd=COALESCE(EXCLUDED.estimated_cost_usd, media_generations.estimated_cost_usd),
+       actual_cost_usd=COALESCE(EXCLUDED.actual_cost_usd, media_generations.actual_cost_usd)`,
     [
       id, record.project || record.projectId || null, record.scene || record.sceneId || null, record.shot || record.shotId || null,
       task.domain || record.domain || 'video', task.operation || record.operation || 'text-to-video',
@@ -137,7 +143,9 @@ export async function saveGenerationToDatabase(record) {
       creativeInput.prompt || record.prompt || '', JSON.stringify(creativeInput.requirements || record.requirements || {}),
       JSON.stringify(record.production?.sound || record.soundPlan || {}), JSON.stringify(output),
       JSON.stringify(execution), JSON.stringify(evaluation), JSON.stringify(record.licensing || {}),
-      record.dataset_id || null
+      record.dataset_id || null,
+      record.execution?.estimated_cost_usd ?? record.estimated_cost_usd ?? null,
+      record.execution?.actual_cost_usd ?? record.actual_cost_usd ?? null
     ]
   );
 
