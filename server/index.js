@@ -444,22 +444,26 @@ async function executeCanonicalGeneration(input = {}) {
   throw new Error('Unknown provider.');
 }
 
-app.get('/api/film/projects', (req, res) => {
-  res.json({ projects: filmStore.listProjects() });
+app.get('/api/film/projects', async (req, res) => {
+  const userId = getSessionUserId(req);
+  const projects = filmStore.listProjects().filter(project => !project.ownerUserId || project.ownerUserId === userId);
+  res.json({ projects });
 });
 
 app.post('/api/film/projects', (req, res) => {
-  try { res.status(201).json({ project: filmStore.createProject(req.body || {}) }); }
+  try { res.status(201).json({ project: filmStore.createProject({ ...(req.body || {}), ownerUserId: getSessionUserId(req) }) }); }
   catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
 });
 
 app.get('/api/film/projects/:projectId', (req, res) => {
   const project = filmStore.getProject(req.params.projectId);
-  if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  if (!project || (project.ownerUserId && project.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
   res.json({ project });
 });
 
 app.patch('/api/film/projects/:projectId', (req, res) => {
+  const existing = filmStore.getProject(req.params.projectId);
+  if (!existing || (existing.ownerUserId && existing.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
   const project = filmStore.updateProject(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
   res.json({ project });
