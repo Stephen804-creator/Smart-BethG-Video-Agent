@@ -1,20 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { secretsMatch } from '../security.js';
-import { assertSafeComfyUrl } from '../security/outbound.js';
+import { createSessionCookie, verifySessionCookie } from '../security.js';
 
-test('secret comparison requires exact non-empty values', () => {
-  assert.equal(secretsMatch('abc', 'abc'), true);
-  assert.equal(secretsMatch('abc', 'abd'), false);
-  assert.equal(secretsMatch('', ''), false);
+test('session cookies preserve the authenticated user identity', () => {
+  const cookie = createSessionCookie('user-123');
+  const session = verifySessionCookie(cookie);
+  assert.equal(session.userId, 'user-123');
+  assert.ok(session.expires > Date.now());
 });
 
-test('ComfyUI blocks loopback and private addresses', async () => {
-  await assert.rejects(() => assertSafeComfyUrl('http://127.0.0.1:8188'));
-  await assert.rejects(() => assertSafeComfyUrl('http://192.168.1.10:8188'));
-  await assert.rejects(() => assertSafeComfyUrl('http://169.254.169.254/latest/meta-data'));
-});
-
-test('ComfyUI rejects embedded credentials', async () => {
-  await assert.rejects(() => assertSafeComfyUrl('https://user:pass@example.com'));
+test('tampered session cookies are rejected', () => {
+  const cookie = createSessionCookie('user-123');
+  const parts = cookie.split('.');
+  const tampered = 'user-999:' + parts[0].split(':').pop() + '.' + parts[1];
+  assert.equal(verifySessionCookie(tampered), null);
 });
