@@ -2,13 +2,10 @@ node_modules/
 client/dist/
 server/settings.json
 output/*.mp4
-data/generations.jsonl
 .env
 .DS_Store
 
 data/film-projects.json
 data/production-jobs.jsonl
-data/dataset-manifest.jsonl
-data/sequences.json
 data/assets/
 data/upload-tmp/
