@@ -43,6 +43,7 @@ function App() {
   const [takeDraft, setTakeDraft] = useState({ camera: '', lens: '35mm', fps: 24, shutter: '1/48', iso: '400', whiteBalance: '5600K', location: '', mediaUri: '', notes: '' });
   const [filmTab, setFilmTab] = useState('shots');
   const [filmReview, setFilmReview] = useState(null);
+  const [continuityReport, setContinuityReport] = useState(null);
   const [assetUploadShotId, setAssetUploadShotId] = useState('');
   const [uploadingAsset, setUploadingAsset] = useState(false);
   const [storyDraft, setStoryDraft] = useState({ premise: '', theme: '', tone: '', setting: '', rules: '', locations: '', factions: '', terminology: '' });
@@ -593,6 +594,19 @@ function App() {
     if (r.ok) setFilmProject(data.project);
   }
 
+  async function runContinuityCheck() {
+    if (!filmProjectId) return;
+    try {
+      setStatus('Checking continuity…');
+      const r = await apiFetch('/film/projects/' + filmProjectId + '/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'continuity' }) });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Continuity check failed.');
+      setContinuityReport(data);
+      setStatus('Continuity check complete');
+      notify(data.recommendations?.length ? data.recommendations.length + ' continuity findings' : 'Continuity looks consistent', data.recommendations?.length ? 'info' : 'success');
+    } catch (e) { notify(e.message || 'Continuity check failed', 'error'); }
+  }
+
   async function reviewFilmProject(mode = 'review') {
     if (!filmProjectId) return;
     const r = await apiFetch( '/film/projects/' + filmProjectId + '/assistant', {
@@ -1043,7 +1057,7 @@ function App() {
           <div className="take-history">{filmTakes.map(t => <div className="take-card" key={t.id}><b>Take {t.takeNumber}</b><span>{t.camera || 'Camera TBD'} · {t.fps}fps · ISO {t.iso || '—'} · {t.shutter || '—'}</span><small>{t.mediaUri || 'No media linked yet.'}</small><button onClick={() => selectFilmTake(t.shotId,t.id)}>{t.selected ? '✓ Selected take' : 'Select as best take'}</button></div>)}</div>
         </div>}
 
-        {filmTab === 'continuity' && <div className="continuity-board"><strong>Continuity board</strong><span className="hint">This workspace will connect to the existing world-entity system so characters, props, wardrobe and screen direction stay consistent.</span><div className="continuity-grid"><div>Characters<br/><small>Appearance · wardrobe · state</small></div><div>Props<br/><small>Position · condition · ownership</small></div><div>Screen direction<br/><small>Entry/exit · eyelines · geography</small></div><div>Lighting<br/><small>Time · direction · practical sources</small></div></div></div>}
+        {filmTab === 'continuity' && <div className="continuity-board"><div className="subhead"><strong>Continuity board</strong><button onClick={runContinuityCheck}>Run continuity check</button></div><span className="hint">Checks the actual project state: characters, world rules, scene/shot attachment, camera continuity and logged continuity events.</span><div className="continuity-grid"><div><b>{filmProject?.characters?.length || 0}</b><small>Characters with persistent identity</small></div><div><b>{[...new Set((filmProject?.scenes||[]).flatMap(x=>x.props||[]))].length}</b><small>Tracked scene props</small></div><div><b>{(filmProject?.shots||[]).filter(x=>x.sceneId).length}/{filmProject?.shots?.length || 0}</b><small>Shots attached to scenes</small></div><div><b>{filmProject?.continuity?.length || 0}</b><small>Logged continuity events</small></div></div>{continuityReport && <div className="review-result"><strong>{continuityReport.recommendations?.length ? 'Findings' : 'No obvious continuity gaps'}</strong>{(continuityReport.recommendations || []).map((item,i)=><span key={i}>• {item}</span>)}</div>}</div>}
 
         {filmTab === 'assets' && <div className="asset-workspace">
           <div className="subhead"><strong>Production media</strong><span className="hint">{filmProject.assets?.length || 0} assets</span></div>
@@ -1158,7 +1172,7 @@ function App() {
         <div className="section-head"><h2>Result</h2>{result && <span className="tag">{result.provider}</span>}</div>
         {!result ? <div className="empty"><div className="play"><Icon name="Play" size={20}/></div><strong>Your generated shot will appear here</strong><span>Choose LTX or Luma as the active generation engine.</span></div> : <div className="result">
           <div className="resultbox">{result.videoUrl ? <video src={result.videoUrl} controls playsInline/> : <div><strong>{result.message || 'No video returned'}</strong><small>{result.detail || ''}</small></div>}</div>
-          {result.generation && <div className="meta"><span>{result.generation.model}</span><span>{result.generation.mode}</span>{result.generation.duration != null && <span>{result.generation.duration}s</span>}{result.generation.width && <span>{result.generation.width}×{result.generation.height}</span>}</div>}
+          {result.generation && <div className="meta"><span>{result.generation.model}</span><span>{result.generation.mode}</span>{result.generation.duration != null && <span>{result.generation.duration}s</span>}{result.generation.width && <span>{result.generation.width}×{result.generation.height}</span>}{result.generation.estimatedCostUsd != null && <span>Est. ${result.generation.estimatedCostUsd}</span>}</div>}
           <div className="actions">
             {result.videoUrl && <a href={result.videoUrl} download className="button">Download</a>}
             <button disabled={!sequenceId} onClick={addResultToSequence}>Add to sequence</button>
