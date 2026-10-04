@@ -553,6 +553,60 @@ app.post('/api/film/projects/:projectId/shots/:shotId/reorder', (req, res) => {
   res.json({ project });
 });
 
+app.post('/api/film/projects/:projectId/import-generation', async (req, res) => {
+  try {
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Film project not found.' });
+    const generationId = String(req.body?.generationId || '');
+    if (!generationId) return res.status(400).json({ error: 'generationId is required.' });
+    const generation = await getGenerationFromDatabase(generationId);
+    if (!generation) return res.status(404).json({ error: 'Generation record not found.' });
+    const output = generation.output?.asset || generation.output?.uri || generation.output?.output || generation.output?.videoUrl || generation.output;
+    if (!output) return res.status(409).json({ error: 'This generation has no media output to import.' });
+
+    let shotId = req.body?.shotId || null;
+    if (shotId && !(project.shots || []).some(shot => shot.id === shotId)) {
+      return res.status(404).json({ error: 'Shot not found in this project.' });
+    }
+    if (!shotId) {
+      const sceneId = req.body?.sceneId || project.scenes?.[0]?.id || filmStore.addScene(req.params.projectId, { title: 'Generated Scene' })?.scenes?.[0]?.id;
+      const updated = filmStore.addShot(req.params.projectId, {
+        sceneId,
+        description: generation.prompt || 'Generated shot',
+        duration: Number(generation.requirements?.duration || 0) || 0,
+        framing: generation.requirements?.framing || 'medium shot',
+        movement: generation.requirements?.cameraMovement || 'generated',
+        lighting: generation.requirements?.lighting || 'cinematic'
+      });
+      shotId = updated?.shots?.at(-1)?.id || null;
+    }
+    if (!shotId) return res.status(500).json({ error: 'Could not create or resolve a project shot.' });
+
+    const filename = path.basename(String(output).split('?')[0]);
+    const asset = filmStore.addAsset(req.params.projectId, {
+      id: 'asset-' + generation.id,
+      name: 'Generated ' + generation.id,
+      filename,
+      sourceType: 'generated',
+      uri: String(output),
+      shotId,
+      mimeType: 'video/mp4',
+      notes: JSON.stringify({ generationId: generation.id, provider: generation.provider, model: generation.model })
+    });
+    const take = filmStore.addTake(req.params.projectId, {
+      id: 'take-' + generation.id,
+      shotId,
+      assetId: asset?.id,
+      mediaUri: String(output),
+      notes: 'Imported AI generation ' + generation.id
+    });
+    if (take) filmStore.selectTake(req.params.projectId, shotId, take.id);
+    res.status(201).json({ project: filmStore.getProject(req.params.projectId), shotId, asset, take });
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Could not import generation into film project.' });
+  }
+});
+
 app.post('/api/film/projects/:projectId/takes', (req, res) => {
   const take = filmStore.addTake(req.params.projectId, req.body || {});
   if (!take) return res.status(404).json({ error: 'Film project not found.' });
