@@ -60,6 +60,11 @@ app.use(express.json({ limit: '2mb' }));
 app.use('/output', authMiddleware, express.static(outputDir));
 app.use('/assets', authMiddleware, express.static(assetDir));
 
+app.get('/api/health', async (req, res) => {
+  const database = await getDatabaseStatus();
+  res.json({ ok: true, service: 'cinematic-agent-v1', database });
+});
+
 app.get('/api/auth/status', (req, res) => res.json({ ...getPublicAuthStatus(), authenticated: isAuthenticated(req) }));
 app.post('/api/auth/login', authRateLimit, (req, res) => {
   if (!process.env.APP_AUTH_PASSWORD) return res.status(503).json({ error: 'Authentication is not configured.' });
@@ -717,11 +722,6 @@ app.get('/api/providers', async (req, res) => {
 });
 
 app.get('/api/database', async (req, res) => { res.json(await getDatabaseStatus()); });
-
-app.get('/api/health', async (req, res) => {
-  const database = await getDatabaseStatus();
-  res.json({ ok: true, service: 'cinematic-agent-v1', database });
-});
 
 app.get('/api/settings', (req, res) => {
   const s = readSettings();
