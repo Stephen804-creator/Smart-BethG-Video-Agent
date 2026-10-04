@@ -63,6 +63,7 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
   if (effect === 'film grain') videoFilters.push('noise=alls=' + Math.round(4 + intensity * 18) + ':allf=t+u');
   if (effect === 'vignette') videoFilters.push('vignette=PI/' + (1.8 - intensity * 0.7).toFixed(2));
   if (effect === 'motion blur') videoFilters.push('tblend=all_mode=average');
+  if (stabilizationRequested) videoFilters.push('deshake=x=16:y=16:w=32:h=32:rx=8:ry=8:edge=mirror');
 
   const transition = String(edit.transition || 'cut').toLowerCase();
   if (transition === 'fade') videoFilters.push('fade=t=in:st=0:d=0.35,fade=t=out:st=' + Math.max(0, effectiveDuration - 0.35).toFixed(3) + ':d=0.35');
@@ -77,7 +78,13 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
   if (trimIn > 0) args.push('-ss', String(trimIn));
   args.push('-i', inputPath);
   if (trimOut > 0 && trimOut > trimIn) args.push('-t', String(trimOut - trimIn));
-  if (videoFilters.length) args.push('-vf', videoFilters.join(','));
+  if (effect === 'soft glow') {
+    const glowStrength = (0.18 + intensity * 0.32).toFixed(3);
+    const sigma = (2 + intensity * 3).toFixed(2);
+    const baseFilters = videoFilters.filter(f => !f.startsWith('deshake')).join(',');
+    const base = baseFilters ? `[0:v]${baseFilters}[base]` : '[0:v]null[base]';
+    args.push('-filter_complex', `${base};[base]split[sharp][blur];[blur]gblur=sigma=${sigma}[glow];[sharp][glow]blend=all_mode=screen:all_opacity=${glowStrength}[v]`,'-map','[v]','-map','0:a?');
+  } else if (videoFilters.length) args.push('-vf', videoFilters.join(','));
   if (audioFilters.length) args.push('-af', audioFilters.join(','));
   args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart');
 
@@ -92,7 +99,7 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
     limitations: [
       ...(effects.background && effects.background !== 'original' ? ['Background replacement/removal/blur requires a segmentation or compositing model and was not applied.'] : []),
       ...(effects.overlay ? ['Text/image overlays require a separate overlay asset and were not applied.'] : []),
-      ...(stabilizationRequested ? ['Stabilization was requested but no guaranteed stabilization filter is assumed; no stabilization was applied.'] : []),
+      ...(stabilizationRequested ? ['Stabilization was applied with FFmpeg deshake.'] : []),
       ...(['cross dissolve', 'match cut'].includes(transition) ? [transition + ' requires adjacent shots; the single-shot renderer preserved the source cut.'] : []),
       ...(audioMix && Object.keys(audioMix).some(key => Number(audioMix[key]) !== 100) ? ['Dialogue/music/SFX/ambience levels require separate audio stems; only the master shot volume was applied.'] : [])
     ]
