@@ -64,7 +64,9 @@ function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [loginPassword, setLoginPassword] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [authMode, setAuthMode] = useState('login');
 
   const routes = {
     '/': 'generator',
@@ -133,7 +135,7 @@ function App() {
   async function login() {
     setLoginError('');
     try {
-      const response = await fetch(API + '/auth/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: loginPassword }) });
+      const response = await fetch(API + '/auth/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, password: loginPassword }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Login failed.');
       setAuthenticated(true);
@@ -141,6 +143,16 @@ function App() {
     } catch (error) {
       setLoginError(error.message || 'Login failed.');
     }
+  }
+
+  async function register() {
+    setLoginError('');
+    try {
+      const response = await fetch(API + '/auth/register', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, password: loginPassword, displayName: loginEmail.split('@')[0] }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Registration failed.');
+      setAuthenticated(true); setLoginPassword(''); setLoginEmail('');
+    } catch (error) { setLoginError(error.message || 'Registration failed.'); }
   }
 
   async function logout() {
@@ -611,13 +623,15 @@ function App() {
   if (!authenticated) {
     return (
       <div className="auth-screen">
-        <form className="auth-card" onSubmit={(event) => { event.preventDefault(); login(); }}>
+        <form className="auth-card" onSubmit={(event) => { event.preventDefault(); authMode === 'login' ? login() : register(); }}>
           <div className="eyebrow">PRIVATE WORKSPACE</div>
           <h1>Cinematic Agent</h1>
-          <p>Sign in to access the production workspace.</p>
-          <input type="password" value={loginPassword} onChange={event => setLoginPassword(event.target.value)} placeholder="Access password" autoFocus />
+          <p>{authMode === 'login' ? 'Sign in to access your production workspace.' : 'Create your filmmaking workspace account.'}</p>
+          <input type="email" value={loginEmail} onChange={event => setLoginEmail(event.target.value)} placeholder="Email address" autoComplete="email" autoFocus />
+          <input type="password" value={loginPassword} onChange={event => setLoginPassword(event.target.value)} placeholder="Password (8+ characters)" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} />
           {loginError && <div className="auth-error">{loginError}</div>}
-          <button type="submit">Sign in</button>
+          <button type="submit">{authMode === 'login' ? 'Sign in' : 'Create account'}</button>
+          <button type="button" className="ghost auth-switch" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setLoginError(''); }}>{authMode === 'login' ? 'Create a new account' : 'Back to sign in'}</button>
         </form>
       </div>
     );
