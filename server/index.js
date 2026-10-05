@@ -758,7 +758,9 @@ app.post('/api/film/projects/:projectId/continuity', (req, res) => {
   res.status(201).json({ event });
 });
 
-app.post('/api/film/projects/:projectId/assistant', (req, res) => {
+function databaseAvailableForContinuity() { return Boolean(process.env.DATABASE_URL); }
+
+app.post('/api/film/projects/:projectId/assistant', async (req, res) => {
   const project = filmStore.getProject(req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 
@@ -787,7 +789,24 @@ app.post('/api/film/projects/:projectId/assistant', (req, res) => {
       if (!shot.sceneId) advice.push('Shot ' + shot.number + ' is not attached to a scene.');
       if (!shot.lens) advice.push('Shot ' + shot.number + ' has no lens record, which weakens camera continuity.');
     }
-    if (!advice.length) advice.push('Continuity records are present. Review entity states against the latest shot before generating the next take.');
+
+    try {
+      const entityRows = await getEntityState(project.id);
+      if (Array.isArray(entityRows) && entityRows.length) {
+        const unresolved = entityRows.filter(entity => {
+          const state = entity.state || {};
+          return !state.appearance && !state.position && !state.wardrobe && !state.props && !entity.continuity;
+        });
+        if (unresolved.length) advice.push(unresolved.length + ' tracked entity state(s) need explicit continuity attributes before the next shot.');
+      } else if (databaseAvailableForContinuity(project.id)) {
+        advice.push('The project has no persisted entity continuity records yet. Register characters, props and other persistent entities before relying on state resolution.');
+      }
+    } catch (error) {
+      console.warn('Continuity entity lookup failed:', error?.message || error);
+      advice.push('Entity continuity storage could not be checked; verify database connectivity before approving the next shot.');
+    }
+
+    if (!advice.length) advice.push('Continuity records are present. Review resolved entity states against the latest shot before generating the next take.');
   } else if (mode === 'next-step') {
     const pendingShots = shots.filter(s => s.status !== 'completed' && !s.selectedTakeId);
     const unreviewedTakes = takes.filter(t => !t.selected);
