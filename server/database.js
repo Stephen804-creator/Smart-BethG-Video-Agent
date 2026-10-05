@@ -423,7 +423,7 @@ export async function claimJob(jobId, ownerUserId = null) {
     `UPDATE media_jobs
         SET status='running', started_at=COALESCE(started_at, NOW())
       WHERE id=$1 AND status='queued'
-        AND (owner_user_id=$2 OR owner_user_id IS NULL)
+        AND (($2::text IS NULL AND owner_user_id IS NULL) OR owner_user_id=$2)
       RETURNING id`,
     [jobId, ownerUserId || null]
   );
@@ -461,6 +461,7 @@ export async function markRunningJobsInterrupted() {
         SET status='failed', completed_at=NOW(),
             error=COALESCE(error, 'Job interrupted because the worker process restarted.')
       WHERE status='running'
+        AND started_at < NOW() - INTERVAL '30 minutes'
       RETURNING id`
   );
   return result.rowCount || 0;
