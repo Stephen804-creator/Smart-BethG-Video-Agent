@@ -1044,7 +1044,7 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
   }
 });
 
-app.get('/api/production/jobs/:projectId', (req, res) => {
+app.get('/api/production/jobs/:projectId', async (req, res) => {
   const runner = createProductionRunner({
     jobsFile,
     executeTask: executeCanonicalGeneration,
