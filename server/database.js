@@ -411,12 +411,16 @@ export async function saveJobToDatabase(job) {
   return true;
 }
 
-export async function listJobsFromDatabase(ownerUserId = null, limit = 100) {
+export async function listJobsFromDatabase(ownerUserId = null, limit = 100, projectId = null) {
   const db = getPool();
   if (!db) return [];
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
   const result = ownerUserId
-    ? await db.query('SELECT * FROM media_jobs WHERE owner_user_id=$1 ORDER BY created_at DESC LIMIT $2', [ownerUserId, safeLimit])
-    : await db.query('SELECT * FROM media_jobs ORDER BY created_at DESC LIMIT $1', [safeLimit]);
+    ? projectId
+      ? await db.query("SELECT * FROM media_jobs WHERE owner_user_id=$1 AND result->>'project_id'=$2 ORDER BY created_at DESC LIMIT $3", [ownerUserId, projectId, safeLimit])
+      : await db.query('SELECT * FROM media_jobs WHERE owner_user_id=$1 ORDER BY created_at DESC LIMIT $2', [ownerUserId, safeLimit])
+    : projectId
+      ? await db.query("SELECT * FROM media_jobs WHERE result->>'project_id'=$1 ORDER BY created_at DESC LIMIT $2", [projectId, safeLimit])
+      : await db.query('SELECT * FROM media_jobs ORDER BY created_at DESC LIMIT $1', [safeLimit]);
   return result.rows;
 }
