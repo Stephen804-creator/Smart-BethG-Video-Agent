@@ -45,6 +45,21 @@ export async function persistCanonicalFilmGraph(db, graph) {
       counts.story = 1;
     }
 
+    for (const rights of graph.rightsProfiles || []) {
+      await upsert(client, `INSERT INTO film_rights_profiles
+        (id,project_id,source,license,license_version,training_allowed,commercial_training_allowed,redistribution_allowed,derivative_model_allowed,restrictions)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (id) DO UPDATE SET
+          source=EXCLUDED.source,license=EXCLUDED.license,license_version=EXCLUDED.license_version,
+          training_allowed=EXCLUDED.training_allowed,commercial_training_allowed=EXCLUDED.commercial_training_allowed,
+          redistribution_allowed=EXCLUDED.redistribution_allowed,derivative_model_allowed=EXCLUDED.derivative_model_allowed,
+          restrictions=EXCLUDED.restrictions`,
+        [rights.id,p.id,rights.source||'',rights.license||'',rights.licenseVersion||'',
+          Boolean(rights.trainingAllowed),Boolean(rights.commercialTrainingAllowed),Boolean(rights.redistributionAllowed),
+          Boolean(rights.derivativeModelAllowed),j(rights.restrictions,{})]);
+    }
+    count('rightsProfiles', graph.rightsProfiles);
+
     for (const c of graph.characters || []) {
       await upsert(client, `INSERT INTO film_characters
         (id,project_id,name,role,description,appearance,wardrobe,personality,relationships,voice_identity,reference_assets,continuity_constraints)
@@ -114,7 +129,7 @@ export async function persistCanonicalFilmGraph(db, graph) {
         ON CONFLICT (id) DO UPDATE SET
           screenplay_id=EXCLUDED.screenplay_id,number=EXCLUDED.number,title=EXCLUDED.title,
           purpose=EXCLUDED.purpose,order_index=EXCLUDED.order_index,updated_at=NOW()`,
-        [seq.id,p.id,seq.screenplayId||sp?.id,Number(seq.number||1),seq.title||'',seq.purpose||Number(seq.orderIndex||seq.number||1)]);
+        [seq.id,p.id,seq.screenplayId||sp?.id,Number(seq.number||1),seq.title||'',seq.purpose||'',Number(seq.orderIndex||seq.number||1)]);
     }
     count('sequences', graph.sequences);
 
