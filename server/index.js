@@ -470,14 +470,14 @@ async function executeCanonicalGeneration(input = {}) {
     if (operation !== 'text-to-video' && operation !== 'video-to-video') throw new Error('LTX currently supports text-to-video and continuity video-to-video in this pipeline.');
     const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
-    const result = await generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId: input.ownerUserId, projectId: input.projectId, sceneId: input.sceneId, shotId: input.shotId });
+    const result = await generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId: input.ownerUserId, projectId: input.projectId, sceneId: input.sceneId, shotId: input.shotId, signal: input.signal });
     return linkGenerationToFilmShot(input, result);
   }
   if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
     if (operation !== 'text-to-video') throw new Error('Luma adapter currently supports text-to-video only.');
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
     const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
-    const result = await generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId: input.ownerUserId, projectId: input.projectId, sceneId: input.sceneId, shotId: input.shotId });
+    const result = await generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId: input.ownerUserId, projectId: input.projectId, sceneId: input.sceneId, shotId: input.shotId, signal: input.signal });
     if (result.generation) result.generation.ownerUserId = input.ownerUserId || null;
     return linkGenerationToFilmShot(input, result);
   }
@@ -525,7 +525,6 @@ app.use('/api/film/projects/:projectId', (req, res, next) => {
 app.get('/api/film/projects/:projectId', async (req, res) => {
   const project = filmStore.getProject(req.params.projectId);
   if (!project || (project.ownerUserId && project.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
-  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -1098,7 +1097,8 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
     const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
-    const job = generationQueue.enqueue('media-generation', () => executeCanonicalGeneration({ ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId: getSessionUserId(req) }), { ownerUserId: getSessionUserId(req) });
+    const payload = { ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId: getSessionUserId(req) };
+    const job = generationQueue.enqueue('media-generation', signal => executeCanonicalGeneration({ ...payload, signal }), { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue media generation.' });
@@ -1157,7 +1157,8 @@ app.get('/api/generations', async (req, res) => {
 app.post('/api/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateGenerateInput(req.body || {});
-    const job = generationQueue.enqueue('video-generation', () => executeCanonicalGeneration({ ...input, ownerUserId: getSessionUserId(req) }), { ownerUserId: getSessionUserId(req) });
+    const payload = { ...input, ownerUserId: getSessionUserId(req) };
+    const job = generationQueue.enqueue('video-generation', signal => executeCanonicalGeneration({ ...payload, signal }), { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue video generation.' });
