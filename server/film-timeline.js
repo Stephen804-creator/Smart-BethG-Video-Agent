@@ -10,7 +10,7 @@ export function buildTimelineProjection(graph, { fps = 24 } = {}) {
 
   const resolveEvent = (event, seen = new Set()) => {
     if (!event || seen.has(event.id)) return null;
-    if (event.timeMode !== 'EVENT_RELATIVE') return Number(event.timeValueMs || 0);
+    if (event.timeMode === 'PROJECT_ABSOLUTE') return Number(event.timeValueMs || 0);\n    if (event.timeMode === 'SHOT_RELATIVE') return Number(event.timeValueMs || 0);\n    if (event.timeMode !== 'EVENT_RELATIVE') return Number(event.timeValueMs || 0);
     seen.add(event.id);
     const source = resolveEvent(eventsById.get(event.sourceEventId), seen);
     return source == null ? null : source + Number(event.offsetMs || 0) + Number(event.timeValueMs || 0);
@@ -41,7 +41,7 @@ export function buildTimelineProjection(graph, { fps = 24 } = {}) {
         sourceType: event.eventType.toLowerCase(),
         sourceId: event.id,
         trackId: event.eventType === 'DIALOGUE' ? 'dialogue' : event.eventType === 'MUSIC' ? 'music' : event.eventType === 'SFX' ? 'sfx' : 'events',
-        startMs: cursor + time,
+        startMs: event.timeMode === 'PROJECT_ABSOLUTE' ? time : cursor + time,
         durationMs: Math.max(0, Number(event.durationMs || 0)),
         inMs: 0,
         outMs: Math.max(0, Number(event.durationMs || 0)),
