@@ -326,5 +326,101 @@ export async function ensureFilmGraphSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_film_approvals_entity ON film_approvals(project_id, entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_film_timelines_project ON film_timelines(project_id, version);
     CREATE INDEX IF NOT EXISTS idx_film_timeline_clips_timeline ON film_timeline_clips(timeline_id, start_ms);
+
+    CREATE TABLE IF NOT EXISTS film_storyboard_panels (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES film_projects(id) ON DELETE CASCADE,
+      scene_id TEXT REFERENCES film_scenes(id) ON DELETE CASCADE,
+      shot_id TEXT REFERENCES film_shots(id) ON DELETE CASCADE,
+      panel_number INTEGER NOT NULL,
+      image_asset_id TEXT,
+      caption TEXT NOT NULL DEFAULT '',
+      camera_notes TEXT NOT NULL DEFAULT '',
+      blocking_notes TEXT NOT NULL DEFAULT '',
+      continuity_notes TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS film_version_records (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES film_projects(id) ON DELETE CASCADE,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+      change_summary TEXT NOT NULL DEFAULT '',
+      created_by_user_id TEXT REFERENCES app_users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(entity_type, entity_id, version)
+    );
+
+    CREATE TABLE IF NOT EXISTS film_audio_tracks (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES film_projects(id) ON DELETE CASCADE,
+      timeline_id TEXT REFERENCES film_timelines(id) ON DELETE CASCADE,
+      track_type TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      channel_layout TEXT NOT NULL DEFAULT 'stereo',
+      gain_db NUMERIC NOT NULL DEFAULT 0,
+      pan NUMERIC NOT NULL DEFAULT 0,
+      mute BOOLEAN NOT NULL DEFAULT FALSE,
+      solo BOOLEAN NOT NULL DEFAULT FALSE,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS film_audio_clips (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES film_projects(id) ON DELETE CASCADE,
+      track_id TEXT NOT NULL REFERENCES film_audio_tracks(id) ON DELETE CASCADE,
+      asset_id TEXT REFERENCES film_assets(id) ON DELETE SET NULL,
+      start_ms BIGINT NOT NULL,
+      duration_ms BIGINT NOT NULL,
+      source_in_ms BIGINT NOT NULL DEFAULT 0,
+      source_out_ms BIGINT,
+      gain_db NUMERIC NOT NULL DEFAULT 0,
+      fade_in_ms BIGINT NOT NULL DEFAULT 0,
+      fade_out_ms BIGINT NOT NULL DEFAULT 0,
+      automation JSONB NOT NULL DEFAULT '{}'::jsonb,
+      event_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+    );
+
+    CREATE TABLE IF NOT EXISTS film_camera_sources (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES film_projects(id) ON DELETE CASCADE,
+      source_type TEXT NOT NULL,
+      device_name TEXT NOT NULL DEFAULT '',
+      uri TEXT NOT NULL DEFAULT '',
+      codec TEXT,
+      fps NUMERIC,
+      resolution TEXT,
+      timecode_start TEXT,
+      checksum TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS film_camera_clips (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES film_projects(id) ON DELETE CASCADE,
+      source_id TEXT NOT NULL REFERENCES film_camera_sources(id) ON DELETE CASCADE,
+      shot_id TEXT REFERENCES film_shots(id) ON DELETE SET NULL,
+      asset_id TEXT REFERENCES film_assets(id) ON DELETE SET NULL,
+      in_ms BIGINT NOT NULL DEFAULT 0,
+      out_ms BIGINT,
+      sync_offset_ms BIGINT NOT NULL DEFAULT 0,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_film_storyboard_shot ON film_storyboard_panels(shot_id, panel_number);
+    CREATE INDEX IF NOT EXISTS idx_film_versions_entity ON film_version_records(project_id, entity_type, entity_id, version);
+    CREATE INDEX IF NOT EXISTS idx_film_audio_tracks_timeline ON film_audio_tracks(timeline_id);
+    CREATE INDEX IF NOT EXISTS idx_film_audio_clips_track_time ON film_audio_clips(track_id, start_ms);
+    CREATE INDEX IF NOT EXISTS idx_film_camera_sources_project ON film_camera_sources(project_id);
+    CREATE INDEX IF NOT EXISTS idx_film_camera_clips_shot ON film_camera_clips(shot_id);
   `);
 }
