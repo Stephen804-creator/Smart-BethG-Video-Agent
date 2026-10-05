@@ -43,6 +43,7 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
     };
 
     for (const node of graph.nodes || []) {
+      if (options.signal?.aborted) throw options.signal.reason || Object.assign(new Error('Production execution cancelled.'), { name: 'AbortError' });
       if (node.type !== 'visual-task') continue;
       const taskId = node.task_id || node.id;
       const operation = node.operation === 'video-generation' ? 'text-to-video' : node.operation;
@@ -86,7 +87,8 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
           allowPaid: options.allowPaid === true,
           projectId,
           sceneId: job.scene_id,
-          shotId: job.shot_id
+          shotId: job.shot_id,
+          signal: options.signal || null
         });
 
         job.status = 'completed';

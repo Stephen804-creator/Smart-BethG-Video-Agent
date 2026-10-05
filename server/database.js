@@ -109,6 +109,9 @@ export async function initDatabase() {
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS dataset_id TEXT;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS actual_cost_usd NUMERIC;
+    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS payload JSONB;
+    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS worker_id TEXT;
+    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS media_jobs (
       id TEXT PRIMARY KEY,
@@ -122,11 +125,21 @@ export async function initDatabase() {
       attempts INTEGER NOT NULL DEFAULT 1,
       retry_of TEXT,
       result JSONB,
-      error TEXT
+      error TEXT,
+      payload JSONB,
+      worker_id TEXT,
+      lease_until TIMESTAMPTZ
     );
 
     CREATE INDEX IF NOT EXISTS idx_media_jobs_owner ON media_jobs(owner_user_id);
     CREATE INDEX IF NOT EXISTS idx_media_jobs_created ON media_jobs(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+      bucket_key TEXT PRIMARY KEY,
+      window_started_at TIMESTAMPTZ NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
     CREATE TABLE IF NOT EXISTS media_knowledge_refs (
       generation_id TEXT NOT NULL,
@@ -331,6 +344,18 @@ export async function saveFilmProjectToDatabase(project) {
   return true;
 }
 
+export async function getFilmProjectFromDatabase(projectId, ownerUserId = null) {
+  const db = getPool();
+  if (!db || !projectId) return null;
+  const result = ownerUserId
+    ? await db.query(
+        'SELECT metadata FROM media_projects WHERE id=$1 AND (owner_user_id=$2 OR owner_user_id IS NULL) LIMIT 1',
+        [projectId, ownerUserId]
+      )
+    : await db.query('SELECT metadata FROM media_projects WHERE id=$1 LIMIT 1', [projectId]);
+  return result.rows[0]?.metadata || null;
+}
+
 export async function listFilmProjectsFromDatabase(ownerUserId = null) {
   const db = getPool();
   if (!db) return [];
@@ -392,8 +417,8 @@ export async function saveJobToDatabase(job) {
   if (!db || !job?.id) return false;
   await db.query(
     `INSERT INTO media_jobs
-      (id, owner_user_id, type, status, created_at, started_at, completed_at, cancelled_at, attempts, retry_of, result, error)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      (id, owner_user_id, type, status, created_at, started_at, completed_at, cancelled_at, attempts, retry_of, result, error, payload)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (id) DO UPDATE SET
        status=EXCLUDED.status,
        started_at=EXCLUDED.started_at,
@@ -402,15 +427,112 @@ export async function saveJobToDatabase(job) {
        attempts=EXCLUDED.attempts,
        retry_of=EXCLUDED.retry_of,
        result=EXCLUDED.result,
-       error=EXCLUDED.error`,
+       error=EXCLUDED.error,
+       payload=COALESCE(EXCLUDED.payload, media_jobs.payload)`,
     [
       job.id, job.ownerUserId || null, job.type || 'job', job.status || 'queued',
       job.createdAt || new Date().toISOString(), job.startedAt || null, job.completedAt || null,
       job.cancelledAt || null, Number(job.attempts || 1), job.retryOf || null,
-      JSON.stringify(job.result ?? null), job.error || null
+      JSON.stringify(job.result ?? null), job.error || null, JSON.stringify(job.payload ?? null)
     ]
   );
   return true;
+}
+
+export async function consumeRateLimitFromDatabase(bucketKey, { limit = 60, windowMs = 60_000 } = {}) {
+  const db = getPool();
+  if (!db) return null;
+  const now = Date.now();
+  const windowStart = new Date(now - windowMs);
+  const result = await db.query(
+    `INSERT INTO rate_limit_buckets (bucket_key, window_started_at, request_count, updated_at)
+     VALUES ($1, NOW(), 1, NOW())
+     ON CONFLICT (bucket_key) DO UPDATE SET
+       window_started_at = CASE
+         WHEN rate_limit_buckets.window_started_at < $2 THEN NOW()
+         ELSE rate_limit_buckets.window_started_at
+       END,
+       request_count = CASE
+         WHEN rate_limit_buckets.window_started_at < $2 THEN 1
+         ELSE rate_limit_buckets.request_count + 1
+       END,
+       updated_at = NOW()
+     RETURNING window_started_at, request_count`,
+    [bucketKey, windowStart]
+  );
+  const row = result.rows[0];
+  const started = new Date(row.window_started_at).getTime();
+  const retryAfterMs = Math.max(0, windowMs - (now - started));
+  return {
+    allowed: Number(row.request_count) <= limit,
+    remaining: Math.max(0, limit - Number(row.request_count)),
+    retryAfterMs
+  };
+}
+
+export async function claimJob(jobId, ownerUserId = null, workerId = 'worker') {
+  const db = getPool();
+  if (!db || !jobId) return true;
+  const result = await db.query(
+    `UPDATE media_jobs
+        SET status='running', started_at=COALESCE(started_at, NOW()),
+            worker_id=$3, lease_until=NOW() + INTERVAL '2 minutes'
+      WHERE id=$1 AND status='queued'
+        AND (($2::text IS NULL AND owner_user_id IS NULL) OR owner_user_id=$2)
+      RETURNING id`,
+    [jobId, ownerUserId || null, workerId]
+  );
+  return result.rowCount === 1;
+}
+
+export async function heartbeatJob(jobId, workerId) {
+  const db = getPool();
+  if (!db || !jobId || !workerId) return true;
+  const result = await db.query(
+    `UPDATE media_jobs SET lease_until=NOW() + INTERVAL '2 minutes'
+      WHERE id=$1 AND status='running' AND worker_id=$2 RETURNING id`,
+    [jobId, workerId]
+  );
+  return result.rowCount === 1;
+}
+
+export async function releaseJobClaim(jobId, workerId = null) {
+  const db = getPool();
+  if (!db || !jobId) return true;
+  await db.query(
+    `UPDATE media_jobs SET worker_id=NULL, lease_until=NULL
+      WHERE id=$1 AND ($2::text IS NULL OR worker_id=$2)`,
+    [jobId, workerId]
+  );
+  return true;
+}
+
+export async function recoverableJobsFromDatabase(ownerUserId = null, limit = 100) {
+  const db = getPool();
+  if (!db) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  await db.query(
+    `UPDATE media_jobs SET status='queued', started_at=NULL, worker_id=NULL, lease_until=NULL,
+      error=COALESCE(error, 'Job lease expired; re-queued after worker recovery.')
+      WHERE status='running' AND lease_until IS NOT NULL AND lease_until < NOW()`
+  );
+  const result = ownerUserId
+    ? await db.query(
+        `SELECT * FROM media_jobs
+         WHERE status='queued' AND (owner_user_id=$1 OR owner_user_id IS NULL)
+         ORDER BY created_at ASC LIMIT $2`,
+        [ownerUserId, safeLimit]
+      )
+    : await db.query(
+        `SELECT * FROM media_jobs WHERE status='queued'
+         ORDER BY created_at ASC LIMIT $1`,
+        [safeLimit]
+      );
+  return result.rows;
+}
+
+export async function markRunningJobsInterrupted() {
+  return 0;
 }
 
 export async function listJobsFromDatabase(ownerUserId = null, limit = 100, projectId = null) {

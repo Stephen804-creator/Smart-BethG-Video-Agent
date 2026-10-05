@@ -27,10 +27,11 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
+import { canonicalOutputUri, resolveMediaPath } from './media/storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -41,27 +42,23 @@ const dataDir = path.join(root, 'data');
 const jobsFile = path.join(dataDir, 'production-jobs.jsonl');
 const filmStore = createFilmStore(path.join(dataDir, 'film-projects.json'));
 
+// PostgreSQL is the canonical durable store when DATABASE_URL is configured.
 const filmMutationMethods = ['createProject','updateProject','updateStory','addCharacter','updateCharacter','updateWorld','addScene','updateScene','addShot','updateShot','reorderScene','reorderShot','addTake','selectTake','addAsset','updateAsset','attachAssetToShot','attachAssetToTake','addContinuityEvent'];
-for (const method of filmMutationMethods) {
-  const original = filmStore[method].bind(filmStore);
-  filmStore[method] = (...args) => {
-    const result = original(...args);
-    const projectId = args[0] || result?.id;
-    const project = projectId && method !== 'createProject' ? filmStore.getProject(projectId) : result;
-    const snapshot = method === 'createProject' ? result : project;
-    if (snapshot?.id) {
-      saveFilmProjectToDatabase(snapshot).catch(error => console.error('Film project database mirror failed:', error?.message || error));
-    }
-    return result;
-  };
-}
 const assetDir = path.join(dataDir, 'assets');
 const assetStore = createAssetStore({ rootDir: assetDir });
 const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSize: 500 * 1024 * 1024 } });
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
 const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
-const generationQueue = createJobQueue({ concurrency: 1, maxQueue: 10, onChange: job => { void saveJobToDatabase(job).catch(error => console.error('Job persistence failed:', error?.message || error)); } });
+const workerId = process.env.WORKER_ID || `cinematic-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
+const generationQueue = createJobQueue({
+  concurrency: Number(process.env.GENERATION_CONCURRENCY || 1),
+  maxQueue: Number(process.env.GENERATION_MAX_QUEUE || 10),
+  onChange: job => { void saveJobToDatabase(job).catch(error => console.error('Job persistence failed:', error?.message || error)); },
+  claim: (id, ownerUserId) => claimJob(id, ownerUserId, workerId),
+  heartbeat: id => heartbeatJob(id, workerId),
+  release: id => releaseJobClaim(id, workerId)
+});
 const apiRateLimit = rateLimitMiddleware({ limit: 120, windowMs: 60 * 1000, keyPrefix: 'api' });
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -282,26 +279,35 @@ function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
   ].join(' ');
 }
 
-async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000) {
+async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000, signal = null) {
+  if (signal?.aborted) throw signal.reason || Object.assign(new Error('Operation cancelled.'), { name: 'AbortError' });
   const job = client.submit(endpoint, payload);
   let finalData = null;
   let lastStatus = null;
   const deadline = Date.now() + timeoutMs;
 
-  for await (const message of job) {
-    if (Date.now() > deadline) {
-      try { await job.return?.(); } catch {}
-      throw new Error(`LTX generation exceeded the ${Math.round(timeoutMs / 60000)} minute worker timeout.`);
+  try {
+    for await (const message of job) {
+      if (signal?.aborted) {
+        try { await job.return?.(); } catch {}
+        throw signal.reason || Object.assign(new Error('Operation cancelled.'), { name: 'AbortError' });
+      }
+      if (Date.now() > deadline) {
+        try { await job.return?.(); } catch {}
+        throw new Error(`LTX generation exceeded the ${Math.round(timeoutMs / 60000)} minute worker timeout.`);
+      }
+      if (message.type === 'status') lastStatus = message;
+      if (message.type === 'data') finalData = message.data;
     }
-    if (message.type === 'status') lastStatus = message;
-    if (message.type === 'data') finalData = message.data;
+  } finally {
+    try { signal?.removeEventListener?.('abort', () => {}); } catch {}
   }
 
   if (!finalData) throw new Error(lastStatus?.message || 'LTX completed without returning a video.');
   return finalData;
 }
 
-async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId, projectId, sceneId, shotId }) {
+async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId, projectId, sceneId, shotId, signal }) {
   const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
   const hasVisualReference = Boolean(reference?.output);
   const continuityPrompt = reference ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.' : '';
@@ -317,13 +323,13 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   let mode = 'text-to-video';
 
   if (hasVisualReference) {
-    const referencePath = path.join(root, reference.output.replace(/^\/output\//, ''));
-    if (!fs.existsSync(referencePath)) throw new Error('The selected continuity video is no longer available on the server.');
+    const referencePath = resolveMediaPath(reference.output, { root, outputDir, assetDir });
+    if (!referencePath || !fs.existsSync(referencePath)) throw new Error('The selected continuity video is no longer available on the server.');
     mode = 'video-to-video';
     const inputVideo = await handle_file(referencePath);
-    finalData = await runLtxJob(client, '/video_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, inputVideo, dimensions.height, dimensions.width, 'video-to-video', Number(duration), 9, seed, true, 1, true]);
+    finalData = await runLtxJob(client, '/video_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, inputVideo, dimensions.height, dimensions.width, 'video-to-video', Number(duration), 9, seed, true, 1, true], 15 * 60 * 1000, signal);
   } else {
-    finalData = await runLtxJob(client, '/text_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, null, dimensions.height, dimensions.width, 'text-to-video', Number(duration), 9, seed, true, 1, true]);
+    finalData = await runLtxJob(client, '/text_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, null, dimensions.height, dimensions.width, 'text-to-video', Number(duration), 9, seed, true, 1, true], 15 * 60 * 1000, signal);
   }
 
   const video = getVideoResult(finalData);
@@ -332,7 +338,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   const downloadTimer = setTimeout(() => downloadController.abort(), 120_000);
   let response;
   try {
-    response = await fetch(video.url, { signal: downloadController.signal });
+    response = await fetch(video.url, { signal: signal || downloadController.signal });
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('LTX video download timed out after 120 seconds.');
     throw error;
@@ -360,17 +366,17 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   return { provider: 'Hugging Face • LTX Video', status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
-async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId, projectId, sceneId, shotId }) {
+async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId, projectId, sceneId, shotId, signal }) {
   const settings = readSettings();
   const apiKey = settings.lumaApiKey || process.env.LUMAAI_API_KEY || '';
   const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
   const finalPrompt = buildShotPrompt({ prompt: [reference ? 'Preserve the established visual identity from the previous shot.' : '', prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
-  const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2' });
+  const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2', signal });
   const downloadController = new AbortController();
   const downloadTimer = setTimeout(() => downloadController.abort(), 120_000);
   let response;
   try {
-    response = await fetch(videoUrl, { signal: downloadController.signal });
+    response = await fetch(videoUrl, { signal: signal || downloadController.signal });
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('Luma video download timed out after 120 seconds.');
     throw error;
@@ -435,6 +441,7 @@ async function linkGenerationToFilmShot(input = {}, result = {}) {
   });
   if (take) {
     filmStore.selectTake(projectId, shotId, take.id);
+    await persistFilmProject(filmStore.getProject(projectId));
     result.film = { projectId, shotId, assetId: asset.id, takeId: take.id };
   }
   return result;
@@ -466,14 +473,14 @@ async function executeCanonicalGeneration(input = {}) {
     if (operation !== 'text-to-video' && operation !== 'video-to-video') throw new Error('LTX currently supports text-to-video and continuity video-to-video in this pipeline.');
     const safeDuration = [2, 4, 6, 8].includes(Number(duration)) ? Number(duration) : 2;
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
-    const result = await generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId: input.ownerUserId, projectId: input.projectId, sceneId: input.sceneId, shotId: input.shotId });
+    const result = await generateWithLtx({ prompt, duration: safeDuration, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId: input.ownerUserId, projectId: input.projectId, sceneId: input.sceneId, shotId: input.shotId, signal: input.signal });
     return linkGenerationToFilmShot(input, result);
   }
   if (selectedProvider === 'luma-ray-flash' || selectedProvider === 'luma-ray-2') {
     if (operation !== 'text-to-video') throw new Error('Luma adapter currently supports text-to-video only.');
     const safeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'].includes(ratio) ? ratio : '16:9';
     const model = selectedProvider === 'luma-ray-2' ? 'ray-2' : 'ray-flash-2';
-    const result = await generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId: input.ownerUserId, projectId: input.projectId, sceneId: input.sceneId, shotId: input.shotId });
+    const result = await generateLumaShot({ prompt, ratio: safeRatio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId: input.ownerUserId, projectId: input.projectId, sceneId: input.sceneId, shotId: input.shotId, signal: input.signal });
     if (result.generation) result.generation.ownerUserId = input.ownerUserId || null;
     return linkGenerationToFilmShot(input, result);
   }
@@ -483,7 +490,7 @@ async function executeCanonicalGeneration(input = {}) {
     const settings = readSettings();
     const safeComfyUrl = await assertSafeComfyUrl(settings.comfyUrl);
     const worker = await createComfyWorker({ baseUrl: safeComfyUrl, workflowPath: comfyWorkflowPath, outputDir });
-    const generated = await worker.execute(task);
+    const generated = await worker.execute(task, { signal: input.signal });
     const record = { id: 'gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), ownerUserId: input.ownerUserId || null, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source, estimatedCostUsd: estimateGenerationCost({ provider: 'comfyui', duration: task.requirements.duration }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'comfyui', duration: task.requirements.duration }).source };
     const qualityControl = await finalizeGeneratedMedia({ record, task, result: generated, worker: { id: worker.id, provider: 'comfyui', runtime: worker.runtime } });
     return linkGenerationToFilmShot(input, { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database });
@@ -491,29 +498,65 @@ async function executeCanonicalGeneration(input = {}) {
   throw new Error('Unknown provider.');
 }
 
-async function persistFilmProject(project) {
-  if (project) {
-    try { await saveFilmProjectToDatabase(project); } catch (error) { console.error('Film project database mirror failed:', error?.message || error); }
+async function resolveQueuedTask(record) {
+  const payload = record?.payload || {};
+  if (record?.type === 'video-generation' || record?.type === 'media-generation') {
+    return signal => executeCanonicalGeneration({ ...payload, signal });
   }
+  if (record?.type === 'production-execution') {
+    return async signal => {
+      const runner = createProductionRunner({
+        outputDir,
+        jobsFile,
+        settings: readSettings,
+        workflowPath: comfyWorkflowPath,
+        executeTask: executeCanonicalGeneration,
+        persistJob: saveJobToDatabase,
+        readPersistedJobs: projectId => listJobsFromDatabase(payload.options?.ownerUserId || record.ownerUserId, 100, projectId)
+      });
+      return runner.execute(payload.graph || {}, { ...(payload.options || {}), signal });
+    };
+  }
+  return null;
+}
+
+async function persistFilmProject(project) {
+  if (!project) return project;
+  if (!process.env.DATABASE_URL) return project;
+  const persisted = await saveFilmProjectToDatabase(project);
+  if (!persisted) throw new Error('PostgreSQL is configured but the film project could not be persisted.');
   return project;
 }
 
 app.get('/api/film/projects', async (req, res) => {
   const userId = getSessionUserId(req);
-  const projects = filmStore.listProjects().filter(project => !project.ownerUserId || project.ownerUserId === userId);
+  const projects = process.env.DATABASE_URL
+    ? await listFilmProjectsFromDatabase(userId)
+    : filmStore.listProjects().filter(project => !project.ownerUserId || project.ownerUserId === userId);
+  if (process.env.DATABASE_URL && projects.length) filmStore.replaceProjects(projects);
   res.json({ projects });
 });
 
 app.post('/api/film/projects', async (req, res) => {
-  try { const project = filmStore.createProject({ ...(req.body || {}), ownerUserId: getSessionUserId(req) }); await persistFilmProject(project); res.status(201).json({ project }); }
+  try { const project = filmStore.createProject({ ...(req.body || {}), ownerUserId: getSessionUserId(req) }); await persistFilmProject(project);
+  res.status(201).json({ project }); }
   catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
 });
 
-app.use('/api/film/projects/:projectId', (req, res, next) => {
-  const project = filmStore.getProject(req.params.projectId);
-  const userId = getSessionUserId(req);
-  if (!project || (project.ownerUserId && project.ownerUserId !== userId)) return res.status(404).json({ error: 'Film project not found.' });
-  next();
+app.use('/api/film/projects/:projectId', async (req, res, next) => {
+  try {
+    const userId = getSessionUserId(req);
+    if (process.env.DATABASE_URL) {
+      const canonical = await getFilmProjectFromDatabase(req.params.projectId, userId);
+      if (canonical) filmStore.replaceProjects([canonical]);
+    }
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project || (project.ownerUserId && project.ownerUserId !== userId)) return res.status(404).json({ error: 'Film project not found.' });
+    req.filmProject = project;
+    next();
+  } catch (error) {
+    res.status(503).json({ error: error?.message || 'Film project storage is unavailable.' });
+  }
 });
 
 app.get('/api/film/projects/:projectId', async (req, res) => {
@@ -528,6 +571,7 @@ app.patch('/api/film/projects/:projectId', async (req, res) => {
   const project = filmStore.updateProject(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -535,6 +579,7 @@ app.patch('/api/film/projects/:projectId/story', async (req, res) => {
   const project = filmStore.updateStory(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -542,6 +587,7 @@ app.post('/api/film/projects/:projectId/characters', async (req, res) => {
   const project = filmStore.addCharacter(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 
+  await persistFilmProject(project);
   res.status(201).json({ project });
 });
 
@@ -549,6 +595,7 @@ app.patch('/api/film/projects/:projectId/characters/:characterId', async (req, r
   const project = filmStore.updateCharacter(req.params.projectId, req.params.characterId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or character not found.' });
 
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -556,6 +603,7 @@ app.patch('/api/film/projects/:projectId/world', async (req, res) => {
   const project = filmStore.updateWorld(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -563,6 +611,7 @@ app.post('/api/film/projects/:projectId/scenes', async (req, res) => {
   const project = filmStore.addScene(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 
+  await persistFilmProject(project);
   res.status(201).json({ project });
 });
 
@@ -570,6 +619,7 @@ app.patch('/api/film/projects/:projectId/scenes/:sceneId', async (req, res) => {
   const project = filmStore.updateScene(req.params.projectId, req.params.sceneId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or scene not found.' });
 
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -577,6 +627,7 @@ app.post('/api/film/projects/:projectId/shots', async (req, res) => {
   const project = filmStore.addShot(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 
+  await persistFilmProject(project);
   res.status(201).json({ project });
 });
 
@@ -584,6 +635,7 @@ app.patch('/api/film/projects/:projectId/shots/:shotId', async (req, res) => {
   const project = filmStore.updateShot(req.params.projectId, req.params.shotId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or shot not found.' });
 
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -591,6 +643,7 @@ app.post('/api/film/projects/:projectId/scenes/:sceneId/reorder', async (req, re
   const project = filmStore.reorderScene(req.params.projectId, req.params.sceneId, req.body?.sequence);
   if (!project) return res.status(404).json({ error: 'Film project or scene not found.' });
 
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -598,6 +651,7 @@ app.post('/api/film/projects/:projectId/shots/:shotId/reorder', async (req, res)
   const project = filmStore.reorderShot(req.params.projectId, req.params.shotId, req.body?.sequence);
   if (!project) return res.status(404).json({ error: 'Film project or shot not found.' });
 
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -655,15 +709,17 @@ app.post('/api/film/projects/:projectId/import-generation', async (req, res) => 
   }
 });
 
-app.post('/api/film/projects/:projectId/takes', (req, res) => {
+app.post('/api/film/projects/:projectId/takes', async (req, res) => {
   const take = filmStore.addTake(req.params.projectId, req.body || {});
   if (!take) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(filmStore.getProject(req.params.projectId));
   res.status(201).json({ take });
 });
 
-app.post('/api/film/projects/:projectId/shots/:shotId/select-take', (req, res) => {
+app.post('/api/film/projects/:projectId/shots/:shotId/select-take', async (req, res) => {
   const project = filmStore.selectTake(req.params.projectId, req.params.shotId, req.body?.takeId);
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -685,21 +741,24 @@ app.post('/api/film/projects/:projectId/assets/upload', upload.single('file'), a
   }
 });
 
-app.patch('/api/film/projects/:projectId/assets/:assetId', (req, res) => {
+app.patch('/api/film/projects/:projectId/assets/:assetId', async (req, res) => {
   const asset = filmStore.updateAsset(req.params.projectId, req.params.assetId, req.body || {});
   if (!asset) return res.status(404).json({ error: 'Film project or asset not found.' });
+  await persistFilmProject(filmStore.getProject(req.params.projectId));
   res.json({ asset });
 });
 
-app.post('/api/film/projects/:projectId/assets/:assetId/attach-shot', (req, res) => {
+app.post('/api/film/projects/:projectId/assets/:assetId/attach-shot', async (req, res) => {
   const project = filmStore.attachAssetToShot(req.params.projectId, req.params.assetId, req.body?.shotId);
   if (!project) return res.status(404).json({ error: 'Film project, asset or shot not found.' });
+  await persistFilmProject(project);
   res.json({ project });
 });
 
-app.post('/api/film/projects/:projectId/assets/:assetId/attach-take', (req, res) => {
+app.post('/api/film/projects/:projectId/assets/:assetId/attach-take', async (req, res) => {
   const project = filmStore.attachAssetToTake(req.params.projectId, req.params.assetId, req.body?.takeId);
   if (!project) return res.status(404).json({ error: 'Film project, asset or take not found.' });
+  await persistFilmProject(project);
   res.json({ project });
 });
 
@@ -709,7 +768,7 @@ app.get('/api/film/projects/:projectId/assets', (req, res) => {
   res.json({ assets: project.assets || [] });
 });
 
-app.post('/api/film/projects/:projectId/assets', (req, res) => {
+app.post('/api/film/projects/:projectId/assets', async (req, res) => {
   const asset = filmStore.addAsset(req.params.projectId, req.body || {});
   if (!asset) return res.status(404).json({ error: 'Film project not found.' });
   res.status(201).json({ asset });
@@ -729,8 +788,8 @@ app.post('/api/film/projects/:projectId/export', async (req, res) => {
       const take = (project.takes || []).find(t => t.id === shot.selectedTakeId) || (project.takes || []).find(t => t.shotId === shot.id);
       const asset = take?.assetId ? (project.assets || []).find(a => a.id === take.assetId) : null;
       if (!asset?.filename) continue;
-      const inputPath = path.resolve(assetDir, path.basename(asset.filename));
-      if (!inputPath.startsWith(path.resolve(assetDir) + path.sep) || !fs.existsSync(inputPath)) continue;
+      const inputPath = resolveMediaPath(asset.uri || asset.filename, { root, outputDir, assetDir });
+      if (!inputPath || !fs.existsSync(inputPath)) continue;
       clips.push({ shotId: shot.id, inputPath, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
     }
     if (!clips.length) return res.status(400).json({ error: 'No usable selected takes are available for export.' });
@@ -764,8 +823,8 @@ app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) 
     const asset = requestedAssetId ? (project.assets || []).find(item => item.id === requestedAssetId) : null;
     if (!asset?.filename) return res.status(400).json({ error: 'Select a take with an imported media asset before rendering.' });
 
-    const inputPath = path.resolve(assetDir, path.basename(asset.filename));
-    if (!inputPath.startsWith(path.resolve(assetDir) + path.sep) || !fs.existsSync(inputPath)) return res.status(404).json({ error: 'Source media file is unavailable.' });
+    const inputPath = resolveMediaPath(asset.uri || asset.filename, { root, outputDir, assetDir });
+    if (!inputPath || !fs.existsSync(inputPath)) return res.status(404).json({ error: 'Source media file is unavailable.' });
 
     const rendered = await renderShot({ inputPath, outputDir, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
     const outputAsset = filmStore.addAsset(req.params.projectId, {
@@ -780,9 +839,10 @@ app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) 
   }
 });
 
-app.post('/api/film/projects/:projectId/continuity', (req, res) => {
+app.post('/api/film/projects/:projectId/continuity', async (req, res) => {
   const event = filmStore.addContinuityEvent(req.params.projectId, req.body || {});
   if (!event) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(filmStore.getProject(req.params.projectId));
   res.status(201).json({ event });
 });
 
@@ -1021,7 +1081,16 @@ app.post('/api/media/execution-plan', (req, res) => {
 app.post('/api/production/execute', generationRateLimit, async (req, res) => {
   try {
     const graph = validateProductionGraphInput(req.body || {});
-    const job = generationQueue.enqueue('production-execution', async () => {
+    const payload = {
+      graph,
+      options: {
+        allowPaid: req.body?.allowPaid === true,
+        preferLocal: req.body?.preferLocal !== false,
+        providerId: req.body?.providerId || '',
+        ownerUserId: getSessionUserId(req)
+      }
+    };
+    const job = generationQueue.enqueue('production-execution', async signal => {
       const runner = createProductionRunner({
         outputDir,
         jobsFile,
@@ -1029,14 +1098,10 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
         workflowPath: comfyWorkflowPath,
         executeTask: executeCanonicalGeneration,
         persistJob: saveJobToDatabase,
-        readPersistedJobs: projectId => listJobsFromDatabase(getSessionUserId(req), 100, projectId)
+        readPersistedJobs: projectId => listJobsFromDatabase(payload.options.ownerUserId, 100, projectId)
       });
-      return runner.execute(graph, {
-        allowPaid: req.body?.allowPaid === true,
-        preferLocal: req.body?.preferLocal !== false,
-        providerId: req.body?.providerId || ''
-      });
-    }, { ownerUserId: getSessionUserId(req) });
+      return runner.execute(payload.graph, { ...payload.options, signal });
+    }, { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     const status = error?.statusCode || 500;
@@ -1077,7 +1142,8 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
     const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
-    const job = generationQueue.enqueue('media-generation', () => executeCanonicalGeneration({ ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId: getSessionUserId(req) }), { ownerUserId: getSessionUserId(req) });
+    const payload = { ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId: getSessionUserId(req) };
+    const job = generationQueue.enqueue('media-generation', signal => executeCanonicalGeneration({ ...payload, signal }), { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue media generation.' });
@@ -1136,7 +1202,8 @@ app.get('/api/generations', async (req, res) => {
 app.post('/api/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateGenerateInput(req.body || {});
-    const job = generationQueue.enqueue('video-generation', () => executeCanonicalGeneration({ ...input, ownerUserId: getSessionUserId(req) }), { ownerUserId: getSessionUserId(req) });
+    const payload = { ...input, ownerUserId: getSessionUserId(req) };
+    const job = generationQueue.enqueue('video-generation', signal => executeCanonicalGeneration({ ...payload, signal }), { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue video generation.' });
@@ -1158,11 +1225,17 @@ initDatabase().then(async () => {
   try {
     const persistedProjects = await listFilmProjectsFromDatabase();
     if (persistedProjects.length) {
-      // PostgreSQL is the durable project source of truth; the local JSON file is only a runtime/cache fallback.
+      // PostgreSQL is the canonical project store; local JSON is only a local runtime cache.
       filmStore.replaceProjects(persistedProjects);
     }
+
+    if (process.env.DATABASE_URL) {
+      const queuedJobs = await recoverableJobsFromDatabase(null, 100);
+      await generationQueue.recover(queuedJobs, resolveQueuedTask);
+      if (queuedJobs.length) console.log(`Recovered ${queuedJobs.length} queued generation job(s) from PostgreSQL.`);
+    }
   } catch (error) {
-    console.error('Film project database hydration skipped:', error?.message || error);
+    console.error('Durable state recovery skipped:', error?.message || error);
   }
   app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
 }).catch(error => {
