@@ -511,7 +511,6 @@ export async function markRunningJobsInterrupted() {
         SET status='failed', completed_at=NOW(),
             error=COALESCE(error, 'Job interrupted because the worker process restarted.')
       WHERE status='running'
-        AND started_at < NOW() - INTERVAL '30 minutes'
       RETURNING id`
   );
   return result.rowCount || 0;
