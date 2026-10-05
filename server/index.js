@@ -527,7 +527,6 @@ app.patch('/api/film/projects/:projectId', async (req, res) => {
   if (!existing || (existing.ownerUserId && existing.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
   const project = filmStore.updateProject(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
-  await persistFilmProject(project);
 
   res.json({ project });
 });
@@ -535,7 +534,6 @@ app.patch('/api/film/projects/:projectId', async (req, res) => {
 app.patch('/api/film/projects/:projectId/story', async (req, res) => {
   const project = filmStore.updateStory(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
-  await persistFilmProject(project);
 
   res.json({ project });
 });
@@ -543,7 +541,6 @@ app.patch('/api/film/projects/:projectId/story', async (req, res) => {
 app.post('/api/film/projects/:projectId/characters', async (req, res) => {
   const project = filmStore.addCharacter(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
-  await persistFilmProject(project);
 
   res.status(201).json({ project });
 });
@@ -551,7 +548,6 @@ app.post('/api/film/projects/:projectId/characters', async (req, res) => {
 app.patch('/api/film/projects/:projectId/characters/:characterId', async (req, res) => {
   const project = filmStore.updateCharacter(req.params.projectId, req.params.characterId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or character not found.' });
-  await persistFilmProject(project);
 
   res.json({ project });
 });
@@ -559,7 +555,6 @@ app.patch('/api/film/projects/:projectId/characters/:characterId', async (req, r
 app.patch('/api/film/projects/:projectId/world', async (req, res) => {
   const project = filmStore.updateWorld(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
-  await persistFilmProject(project);
 
   res.json({ project });
 });
@@ -567,7 +562,6 @@ app.patch('/api/film/projects/:projectId/world', async (req, res) => {
 app.post('/api/film/projects/:projectId/scenes', async (req, res) => {
   const project = filmStore.addScene(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
-  await persistFilmProject(project);
 
   res.status(201).json({ project });
 });
@@ -575,7 +569,6 @@ app.post('/api/film/projects/:projectId/scenes', async (req, res) => {
 app.patch('/api/film/projects/:projectId/scenes/:sceneId', async (req, res) => {
   const project = filmStore.updateScene(req.params.projectId, req.params.sceneId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or scene not found.' });
-  await persistFilmProject(project);
 
   res.json({ project });
 });
@@ -583,7 +576,6 @@ app.patch('/api/film/projects/:projectId/scenes/:sceneId', async (req, res) => {
 app.post('/api/film/projects/:projectId/shots', async (req, res) => {
   const project = filmStore.addShot(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
-  await persistFilmProject(project);
 
   res.status(201).json({ project });
 });
@@ -591,7 +583,6 @@ app.post('/api/film/projects/:projectId/shots', async (req, res) => {
 app.patch('/api/film/projects/:projectId/shots/:shotId', async (req, res) => {
   const project = filmStore.updateShot(req.params.projectId, req.params.shotId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or shot not found.' });
-  await persistFilmProject(project);
 
   res.json({ project });
 });
@@ -599,7 +590,6 @@ app.patch('/api/film/projects/:projectId/shots/:shotId', async (req, res) => {
 app.post('/api/film/projects/:projectId/scenes/:sceneId/reorder', async (req, res) => {
   const project = filmStore.reorderScene(req.params.projectId, req.params.sceneId, req.body?.sequence);
   if (!project) return res.status(404).json({ error: 'Film project or scene not found.' });
-  await persistFilmProject(project);
 
   res.json({ project });
 });
@@ -607,7 +597,6 @@ app.post('/api/film/projects/:projectId/scenes/:sceneId/reorder', async (req, re
 app.post('/api/film/projects/:projectId/shots/:shotId/reorder', async (req, res) => {
   const project = filmStore.reorderShot(req.params.projectId, req.params.shotId, req.body?.sequence);
   if (!project) return res.status(404).json({ error: 'Film project or shot not found.' });
-  await persistFilmProject(project);
 
   res.json({ project });
 });
