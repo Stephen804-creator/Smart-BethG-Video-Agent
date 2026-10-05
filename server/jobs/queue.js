@@ -9,6 +9,8 @@ export function createJobQueue({
   heartbeat = null
 } = {}) {
   const jobs = new Map();
+  const terminalJobs = new Map();
+  const terminalLimit = 1000;
   const pending = [];
   let active = 0;
   let draining = false;
@@ -29,6 +31,17 @@ export function createJobQueue({
 
   function persist(job) {
     try { if (typeof onChange === 'function') onChange(persisted(job)); } catch {}
+  }
+
+  function rememberTerminal(job) {
+    const record = { ...job };
+    record.controller = null;
+    terminalJobs.delete(job.id);
+    terminalJobs.set(job.id, record);
+    while (terminalJobs.size > terminalLimit) {
+      const oldest = terminalJobs.keys().next().value;
+      terminalJobs.delete(oldest);
+    }
   }
 
   async function drain() {
@@ -93,6 +106,7 @@ export function createJobQueue({
             persist(job);
             try { if (typeof release === 'function') await release(job.id); } catch {}
             jobs.delete(job.id);
+            rememberTerminal(job);
             active -= 1;
             void drain();
           });
@@ -152,10 +166,10 @@ export function createJobQueue({
     return restored;
   }
 
-  function get(id) { const job = jobs.get(id); return job ? snapshot(job) : null; }
+  function get(id) { const job = jobs.get(id) || terminalJobs.get(id); return job ? snapshot(job) : null; }
 
   function cancel(id) {
-    const job = jobs.get(id);
+    const job = jobs.get(id) || terminalJobs.get(id);
     if (!job) return null;
     if (['completed', 'failed', 'cancelled'].includes(job.status)) return snapshot(job);
     job.cancelRequested = true;
@@ -172,13 +186,14 @@ export function createJobQueue({
   }
 
   function retry(id) {
-    const original = jobs.get(id);
+    const original = jobs.get(id) || terminalJobs.get(id);
     if (!original) return null;
     if (!['failed', 'cancelled'].includes(original.status)) {
       const error = new Error('Only failed or cancelled jobs can be retried.');
       error.statusCode = 409;
       throw error;
     }
+    terminalJobs.delete(original.id);
     return enqueue(original.type, original.taskFactory, {
       payload: original.payload, attempts: (original.attempts || 1) + 1,
       retryOf: original.id, ownerUserId: original.ownerUserId
@@ -186,16 +201,16 @@ export function createJobQueue({
   }
 
   function ownedGet(id, ownerUserId) {
-    const job = jobs.get(id);
+    const job = jobs.get(id) || terminalJobs.get(id);
     return job && (!job.ownerUserId || job.ownerUserId === ownerUserId) ? snapshot(job) : null;
   }
   function ownedCancel(id, ownerUserId) {
-    const job = jobs.get(id);
+    const job = jobs.get(id) || terminalJobs.get(id);
     if (!job || (job.ownerUserId && job.ownerUserId !== ownerUserId)) return null;
     return cancel(id);
   }
   function ownedRetry(id, ownerUserId) {
-    const job = jobs.get(id);
+    const job = jobs.get(id) || terminalJobs.get(id);
     if (!job || (job.ownerUserId && job.ownerUserId !== ownerUserId)) return null;
     return retry(id);
   }
