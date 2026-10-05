@@ -68,7 +68,7 @@ export async function persistCanonicalFilmGraph(db, graph) {
           project_id=EXCLUDED.project_id,name=EXCLUDED.name,role=EXCLUDED.role,
           description=EXCLUDED.description,appearance=EXCLUDED.appearance,wardrobe=EXCLUDED.wardrobe,
           personality=EXCLUDED.personality,relationships=EXCLUDED.relationships,voice_identity=EXCLUDED.voice_identity,
-          references=EXCLUDED.reference_assets,continuity_constraints=EXCLUDED.continuity_constraints,updated_at=NOW()`,
+          reference_assets=EXCLUDED.reference_assets,continuity_constraints=EXCLUDED.continuity_constraints,updated_at=NOW()`,
         [c.id,p.id,c.name||'',c.role||'',c.description||'',j(c.appearance,{}),j(c.wardrobe,{}),j(c.personality,{}),j(c.relationships,[]),j(c.voiceIdentity,{}),j(c.references,[]),j(c.continuityConstraints,{})]);
     }
     count('characters', graph.characters);
