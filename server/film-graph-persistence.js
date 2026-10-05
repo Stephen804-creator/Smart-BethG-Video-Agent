@@ -234,6 +234,116 @@ export async function persistCanonicalFilmGraph(db, graph) {
     }
     count('continuity', graph.continuity);
 
+    for (const panel of graph.storyboardPanels || []) {
+      await upsert(client, `INSERT INTO film_storyboard_panels
+        (id,project_id,scene_id,shot_id,panel_number,image_asset_id,caption,camera_notes,blocking_notes,continuity_notes,status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        ON CONFLICT (id) DO UPDATE SET
+          scene_id=EXCLUDED.scene_id,shot_id=EXCLUDED.shot_id,panel_number=EXCLUDED.panel_number,
+          image_asset_id=EXCLUDED.image_asset_id,caption=EXCLUDED.caption,camera_notes=EXCLUDED.camera_notes,
+          blocking_notes=EXCLUDED.blocking_notes,continuity_notes=EXCLUDED.continuity_notes,status=EXCLUDED.status,updated_at=NOW()`,
+        [panel.id,p.id,panel.sceneId||null,panel.shotId||null,Number(panel.panelNumber||1),panel.imageAssetId||null,
+          panel.caption||'',panel.cameraNotes||'',panel.blockingNotes||'',panel.continuityNotes||'',panel.status||'draft']);
+    }
+    count('storyboardPanels', graph.storyboardPanels);
+
+    for (const approval of graph.approvals || []) {
+      await upsert(client, `INSERT INTO film_approvals
+        (id,project_id,entity_type,entity_id,state,reviewer_user_id,notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT (id) DO UPDATE SET
+          entity_type=EXCLUDED.entity_type,entity_id=EXCLUDED.entity_id,state=EXCLUDED.state,
+          reviewer_user_id=EXCLUDED.reviewer_user_id,notes=EXCLUDED.notes`,
+        [approval.id,p.id,approval.entityType||'unknown',approval.entityId,approval.state||'DRAFT',
+          approval.reviewerUserId||null,approval.notes||'']);
+    }
+    count('approvals', graph.approvals);
+
+    for (const version of graph.versionRecords || []) {
+      await upsert(client, `INSERT INTO film_version_records
+        (id,project_id,entity_type,entity_id,version,snapshot,change_summary,created_by_user_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (entity_type,entity_id,version) DO UPDATE SET
+          snapshot=EXCLUDED.snapshot,change_summary=EXCLUDED.change_summary,created_by_user_id=EXCLUDED.created_by_user_id`,
+        [version.id,p.id,version.entityType||'unknown',version.entityId,Number(version.version||1),j(version.snapshot,{}),
+          version.changeSummary||'',version.createdByUserId||null]);
+    }
+    count('versionRecords', graph.versionRecords);
+
+    for (const timeline of graph.timelines || []) {
+      await upsert(client, `INSERT INTO film_timelines
+        (id,project_id,version,duration_ms,fps,status)
+        VALUES ($1,$2,$3,$4,$5,$6)
+        ON CONFLICT (id) DO UPDATE SET
+          version=EXCLUDED.version,duration_ms=EXCLUDED.duration_ms,fps=EXCLUDED.fps,status=EXCLUDED.status,updated_at=NOW()`,
+        [timeline.id,p.id,Number(timeline.version||1),Number(timeline.durationMs||0),Number(timeline.fps||24),timeline.status||'draft']);
+      for (const clip of timeline.clips || []) {
+        await upsert(client, `INSERT INTO film_timeline_clips
+          (id,timeline_id,track_id,source_type,source_id,start_ms,duration_ms,in_ms,out_ms,linked_clip_ids,event_ids,metadata)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          ON CONFLICT (id) DO UPDATE SET
+            timeline_id=EXCLUDED.timeline_id,track_id=EXCLUDED.track_id,source_type=EXCLUDED.source_type,
+            source_id=EXCLUDED.source_id,start_ms=EXCLUDED.start_ms,duration_ms=EXCLUDED.duration_ms,
+            in_ms=EXCLUDED.in_ms,out_ms=EXCLUDED.out_ms,linked_clip_ids=EXCLUDED.linked_clip_ids,
+            event_ids=EXCLUDED.event_ids,metadata=EXCLUDED.metadata`,
+          [clip.id,timeline.id,clip.trackId||'video-main',clip.sourceType||'media',clip.sourceId,startMs(clip.startMs),startMs(clip.durationMs),
+            startMs(clip.inMs),clip.outMs==null?null:startMs(clip.outMs),j(clip.linkedClipIds||[],[]),j(clip.eventIds||[],[]),j(clip.metadata||{}, {})]);
+      }
+    }
+    count('timelines', graph.timelines);
+
+    for (const track of graph.audioTracks || []) {
+      await upsert(client, `INSERT INTO film_audio_tracks
+        (id,project_id,timeline_id,track_type,name,channel_layout,gain_db,pan,mute,solo,metadata)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        ON CONFLICT (id) DO UPDATE SET
+          timeline_id=EXCLUDED.timeline_id,track_type=EXCLUDED.track_type,name=EXCLUDED.name,
+          channel_layout=EXCLUDED.channel_layout,gain_db=EXCLUDED.gain_db,pan=EXCLUDED.pan,
+          mute=EXCLUDED.mute,solo=EXCLUDED.solo,metadata=EXCLUDED.metadata`,
+        [track.id,p.id,track.timelineId||null,track.trackType||'audio',track.name||'',track.channelLayout||'stereo',
+          Number(track.gainDb||0),Number(track.pan||0),Boolean(track.mute),Boolean(track.solo),j(track.metadata||{}, {})]);
+    }
+    count('audioTracks', graph.audioTracks);
+
+    for (const clip of graph.audioClips || []) {
+      await upsert(client, `INSERT INTO film_audio_clips
+        (id,project_id,track_id,asset_id,start_ms,duration_ms,source_in_ms,source_out_ms,gain_db,fade_in_ms,fade_out_ms,automation,event_ids,metadata)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        ON CONFLICT (id) DO UPDATE SET
+          track_id=EXCLUDED.track_id,asset_id=EXCLUDED.asset_id,start_ms=EXCLUDED.start_ms,duration_ms=EXCLUDED.duration_ms,
+          source_in_ms=EXCLUDED.source_in_ms,source_out_ms=EXCLUDED.source_out_ms,gain_db=EXCLUDED.gain_db,
+          fade_in_ms=EXCLUDED.fade_in_ms,fade_out_ms=EXCLUDED.fade_out_ms,automation=EXCLUDED.automation,
+          event_ids=EXCLUDED.event_ids,metadata=EXCLUDED.metadata`,
+        [clip.id,p.id,clip.trackId,clip.assetId||null,startMs(clip.startMs),startMs(clip.durationMs),startMs(clip.sourceInMs),
+          clip.sourceOutMs==null?null:startMs(clip.sourceOutMs),Number(clip.gainDb||0),startMs(clip.fadeInMs),startMs(clip.fadeOutMs),
+          j(clip.automation||{},{}),j(clip.eventIds||[],[]),j(clip.metadata||{}, {})]);
+    }
+    count('audioClips', graph.audioClips);
+
+    for (const source of graph.cameraSources || []) {
+      await upsert(client, `INSERT INTO film_camera_sources
+        (id,project_id,source_type,device_name,uri,codec,fps,resolution,timecode_start,checksum,metadata)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        ON CONFLICT (id) DO UPDATE SET
+          source_type=EXCLUDED.source_type,device_name=EXCLUDED.device_name,uri=EXCLUDED.uri,codec=EXCLUDED.codec,
+          fps=EXCLUDED.fps,resolution=EXCLUDED.resolution,timecode_start=EXCLUDED.timecode_start,checksum=EXCLUDED.checksum,metadata=EXCLUDED.metadata`,
+        [source.id,p.id,source.sourceType||'camera',source.deviceName||'',source.uri||'',source.codec||null,source.fps??null,
+          source.resolution||null,source.timecodeStart||null,source.checksum||null,j(source.metadata||{}, {})]);
+    }
+    count('cameraSources', graph.cameraSources);
+
+    for (const clip of graph.cameraClips || []) {
+      await upsert(client, `INSERT INTO film_camera_clips
+        (id,project_id,source_id,shot_id,asset_id,in_ms,out_ms,sync_offset_ms,metadata)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (id) DO UPDATE SET
+          source_id=EXCLUDED.source_id,shot_id=EXCLUDED.shot_id,asset_id=EXCLUDED.asset_id,
+          in_ms=EXCLUDED.in_ms,out_ms=EXCLUDED.out_ms,sync_offset_ms=EXCLUDED.sync_offset_ms,metadata=EXCLUDED.metadata`,
+        [clip.id,p.id,clip.sourceId,clip.shotId||null,clip.assetId||null,startMs(clip.inMs),clip.outMs==null?null:startMs(clip.outMs),
+          Number(clip.syncOffsetMs||0),j(clip.metadata||{}, {})]);
+    }
+    count('cameraClips', graph.cameraClips);
+
     await client.query('COMMIT');
     return { enabled: true, migrated: true, projectId: p.id, counts };
   } catch (error) {
