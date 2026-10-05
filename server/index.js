@@ -501,7 +501,7 @@ app.get('/api/film/projects', async (req, res) => {
 });
 
 app.post('/api/film/projects', async (req, res) => {
-  try { const project = filmStore.createProject({ ...(req.body || {}), ownerUserId: getSessionUserId(req) }); await persistFilmProject(project); await persistFilmProject(project);
+  try { const project = filmStore.createProject({ ...(req.body || {}), ownerUserId: getSessionUserId(req) }); await persistFilmProject(project);
   res.status(201).json({ project }); }
   catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
 });
