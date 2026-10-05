@@ -27,7 +27,7 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, recoverableJobsFromDatabase, markRunningJobsInterrupted } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, getFilmProjectFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, recoverableJobsFromDatabase, markRunningJobsInterrupted } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
@@ -528,7 +528,10 @@ async function persistFilmProject(project) {
 
 app.get('/api/film/projects', async (req, res) => {
   const userId = getSessionUserId(req);
-  const projects = filmStore.listProjects().filter(project => !project.ownerUserId || project.ownerUserId === userId);
+  const projects = process.env.DATABASE_URL
+    ? await listFilmProjectsFromDatabase(userId)
+    : filmStore.listProjects().filter(project => !project.ownerUserId || project.ownerUserId === userId);
+  if (process.env.DATABASE_URL && projects.length) filmStore.replaceProjects(projects);
   res.json({ projects });
 });
 
@@ -538,11 +541,20 @@ app.post('/api/film/projects', async (req, res) => {
   catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
 });
 
-app.use('/api/film/projects/:projectId', (req, res, next) => {
-  const project = filmStore.getProject(req.params.projectId);
-  const userId = getSessionUserId(req);
-  if (!project || (project.ownerUserId && project.ownerUserId !== userId)) return res.status(404).json({ error: 'Film project not found.' });
-  next();
+app.use('/api/film/projects/:projectId', async (req, res, next) => {
+  try {
+    const userId = getSessionUserId(req);
+    if (process.env.DATABASE_URL) {
+      const canonical = await getFilmProjectFromDatabase(req.params.projectId, userId);
+      if (canonical) filmStore.replaceProjects([canonical]);
+    }
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project || (project.ownerUserId && project.ownerUserId !== userId)) return res.status(404).json({ error: 'Film project not found.' });
+    req.filmProject = project;
+    next();
+  } catch (error) {
+    res.status(503).json({ error: error?.message || 'Film project storage is unavailable.' });
+  }
 });
 
 app.get('/api/film/projects/:projectId', async (req, res) => {
