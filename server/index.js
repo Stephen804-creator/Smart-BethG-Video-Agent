@@ -439,6 +439,7 @@ async function linkGenerationToFilmShot(input = {}, result = {}) {
   });
   if (take) {
     filmStore.selectTake(projectId, shotId, take.id);
+    await persistFilmProject(filmStore.getProject(projectId));
     result.film = { projectId, shotId, assetId: asset.id, takeId: take.id };
   }
   return result;
