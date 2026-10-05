@@ -125,7 +125,7 @@ export function projectToCanonicalGraph(project) {
     story: mapStory(project),
     characters,
     locations,
-    props: [],
+    props: (project.props || project.world?.props || []).map(prop => ({\n      id: prop.id || uuid('prop'), projectId: project.id, name: prop.name || 'Prop', description: prop.description || '',\n      appearance: json(prop.appearance, {}), ownerCharacterId: prop.ownerCharacterId || null,\n      references: json(prop.references, []), continuityConstraints: json(prop.continuityConstraints, {})\n    })),
     styles: [{
       projectId: project.id,
       visual: {},
@@ -146,11 +146,11 @@ export function projectToCanonicalGraph(project) {
       sourceFormat: 'structured',
       sourceText: ''
     },
-    sequences: [],
+    sequences: (project.sequences || []).map((seq, index) => ({\n      id: seq.id || uuid('sequence'), projectId: project.id, screenplayId: project.screenplayId || null,\n      number: Number(seq.number || index + 1), title: seq.title || '', purpose: seq.purpose || '', orderIndex: Number(seq.orderIndex || index + 1)\n    })),
     scenes,
     shots,
-    events: [],
-    dialogue: [],
+    events: (project.events || []).map(event => ({\n      ...event, projectId: project.id, timeMode: event.timeMode || 'SHOT_RELATIVE',\n      timeValueMs: Number(event.timeValueMs || event.timeMs || 0), durationMs: Number(event.durationMs || 0), offsetMs: Number(event.offsetMs || 0),\n      status: event.status || 'planned'\n    })),
+    dialogue: (project.dialogue || []).map(d => ({\n      ...d, projectId: project.id, eventId: d.eventId || null, text: d.text || '',\n      startMs: d.startMs ?? null, endMs: d.endMs ?? null\n    })),
     continuity: (project.continuity || []).map(item => ({
       id: item.id || uuid('continuity'),
       projectId: project.id,
