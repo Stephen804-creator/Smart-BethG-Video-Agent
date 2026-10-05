@@ -735,8 +735,18 @@ app.post('/api/film/projects/:projectId/export', async (req, res) => {
     }
     if (!clips.length) return res.status(400).json({ error: 'No usable selected takes are available for export.' });
     const rendered = await renderTimeline({ clips, outputDir });
+    const exportAsset = filmStore.addAsset(req.params.projectId, {
+      id: 'export-' + path.basename(rendered.filename, '.mp4'),
+      name: 'Timeline Export ' + new Date().toISOString(),
+      filename: rendered.filename,
+      sourceType: 'rendered-export',
+      uri: rendered.output,
+      mimeType: 'video/mp4',
+      notes: JSON.stringify({ clipCount: rendered.clips?.length || 0, duration: rendered.duration })
+    });
     const evaluation = await evaluateVideoFile(rendered.outputPath, { frameOutputRoot: path.join(dataDir, 'evaluation-frames') });
-    res.status(201).json({ export: rendered, evaluation });
+    await persistFilmProject(filmStore.getProject(req.params.projectId));
+    res.status(201).json({ export: rendered, asset: exportAsset, evaluation });
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not export film.' });
   }
