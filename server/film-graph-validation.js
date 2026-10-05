@@ -29,13 +29,13 @@ export function validateCanonicalFilmGraph(graph) {
   addIds(graph?.dialogue, 'dialogue');
   addIds(graph?.assets, 'asset');
   addIds(graph?.takes, 'take');
-  addIds(graph?.continuity, 'continuity');
+  addIds(graph?.continuity, 'continuity');\n  addIds(graph?.rightsProfiles, 'rightsProfile');\n  addIds(graph?.storyboardPanels, 'storyboardPanel');\n  addIds(graph?.approvals, 'approval');\n  addIds(graph?.versionRecords, 'versionRecord');\n  addIds(graph?.timelines, 'timeline');\n  addIds(graph?.audioTracks, 'audioTrack');\n  addIds(graph?.audioClips, 'audioClip');\n  addIds(graph?.cameraSources, 'cameraSource');\n  addIds(graph?.cameraClips, 'cameraClip');
 
   const sceneIds = new Set((graph.scenes || []).map(x => x.id));
-  const shotIds = new Set((graph.shots || []).map(x => x.id));
+  const shotIds = new Set((graph.shots || []).map(x => x.id));\n  const eventIds = new Set((graph.events || []).map(x => x.id));\n  const screenplayId = graph.screenplay?.id || null;\n  const sequenceIds = new Set((graph.sequences || []).map(x => x.id));\n  const assetIds = new Set((graph.assets || []).map(x => x.id));
   const characterIds = new Set((graph.characters || []).map(x => x.id));
 
-  for (const shot of graph.shots || []) {
+  for (const sequence of graph.sequences || []) {\n    if (!sequence.screenplayId && screenplayId) sequence.screenplayId = screenplayId;\n    if (sequence.screenplayId && sequence.screenplayId !== screenplayId) errors.push({ code: 'SEQUENCE_SCREENPLAY_MISSING', sequenceId: sequence.id, screenplayId: sequence.screenplayId });\n  }\n\n  for (const scene of graph.scenes || []) {\n    if (scene.sequenceId && !sequenceIds.has(scene.sequenceId)) errors.push({ code: 'SCENE_SEQUENCE_MISSING', sceneId: scene.id, sequenceId: scene.sequenceId });\n  }\n\n  for (const shot of graph.shots || []) {
     if (!shot.sceneId || !sceneIds.has(shot.sceneId)) {
       errors.push({ code: 'SHOT_SCENE_MISSING', shotId: shot.id, sceneId: shot.sceneId || null });
     }
@@ -57,7 +57,7 @@ export function validateCanonicalFilmGraph(graph) {
     }
   }
 
-  const eventsById = new Map((graph.events || []).map(event => [event.id, event]));
+  for (const dialogue of graph.dialogue || []) {\n    if (!dialogue.eventId || !eventIds.has(dialogue.eventId)) errors.push({ code: 'DIALOGUE_EVENT_MISSING', dialogueId: dialogue.id, eventId: dialogue.eventId || null });\n    if (dialogue.characterId && !characterIds.has(dialogue.characterId)) errors.push({ code: 'DIALOGUE_CHARACTER_MISSING', dialogueId: dialogue.id, characterId: dialogue.characterId });\n    if (dialogue.audioAssetId && !assetIds.has(dialogue.audioAssetId)) warnings.push({ code: 'DIALOGUE_AUDIO_ASSET_MISSING', dialogueId: dialogue.id, assetId: dialogue.audioAssetId });\n  }\n\n  for (const take of graph.takes || []) {\n    if (take.shotId && !shotIds.has(take.shotId)) errors.push({ code: 'TAKE_SHOT_MISSING', takeId: take.id, shotId: take.shotId });\n    if (take.assetId && !assetIds.has(take.assetId)) errors.push({ code: 'TAKE_ASSET_MISSING', takeId: take.id, assetId: take.assetId });\n  }\n\n  const eventsById = new Map((graph.events || []).map(event => [event.id, event]));
   const resolving = new Set();
   const resolved = new Map();
 
