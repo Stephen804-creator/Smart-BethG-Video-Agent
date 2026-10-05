@@ -4,6 +4,8 @@ import crypto from 'node:crypto';
 const { Pool } = pg;
 let pool = null;
 
+function dbOwnerId(value) { return value && value !== 'admin' ? String(value) : null; }
+
 function getPool() {
   if (!process.env.DATABASE_URL) return null;
   if (!pool) {
@@ -167,7 +169,7 @@ export async function saveGenerationToDatabase(record) {
        estimated_cost_usd=COALESCE(EXCLUDED.estimated_cost_usd, media_generations.estimated_cost_usd),
        actual_cost_usd=COALESCE(EXCLUDED.actual_cost_usd, media_generations.actual_cost_usd)`,
     [
-      id, record.ownerUserId || null, record.project || record.projectId || null, record.scene || record.sceneId || null, record.shot || record.shotId || null,
+      id, dbOwnerId(record.ownerUserId), record.project || record.projectId || null, record.scene || record.sceneId || null, record.shot || record.shotId || null,
       task.domain || record.domain || 'video', task.operation || record.operation || 'text-to-video',
       execution.provider || record.provider || null, execution.worker_id || record.workerId || null,
       execution.model || record.model || null, execution.workflow || record.workflow || null,
@@ -324,7 +326,7 @@ export async function saveFilmProjectToDatabase(project) {
     `INSERT INTO media_projects (id, owner_user_id, name, metadata, updated_at)
      VALUES ($1,$2,$3,$4,NOW())
      ON CONFLICT (id) DO UPDATE SET owner_user_id=COALESCE(EXCLUDED.owner_user_id, media_projects.owner_user_id), name=EXCLUDED.name, metadata=EXCLUDED.metadata, updated_at=NOW()`,
-    [project.id, project.ownerUserId || null, project.title || 'Untitled Film', JSON.stringify(project)]
+    [project.id, dbOwnerId(project.ownerUserId), project.title || 'Untitled Film', JSON.stringify(project)]
   );
   return true;
 }
