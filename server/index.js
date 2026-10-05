@@ -27,11 +27,11 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, getFilmProjectFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, recoverableJobsFromDatabase, markRunningJobsInterrupted } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, recoverableJobsFromDatabase, markRunningJobsInterrupted } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
-import { canonicalOutputUri, resolveMediaPath, mediaUriForPath } from './media/storage.js';
+import { canonicalOutputUri, resolveMediaPath } from './media/storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
