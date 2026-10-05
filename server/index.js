@@ -312,8 +312,8 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   let mode = 'text-to-video';
 
   if (hasVisualReference) {
-    const referencePath = path.join(root, reference.output.replace(/^\/output\//, ''));
-    if (!fs.existsSync(referencePath)) throw new Error('The selected continuity video is no longer available on the server.');
+    const referencePath = resolveMediaPath(reference.output, { root, outputDir, assetDir });
+    if (!referencePath || !fs.existsSync(referencePath)) throw new Error('The selected continuity video is no longer available on the server.');
     mode = 'video-to-video';
     const inputVideo = await handle_file(referencePath);
     finalData = await runLtxJob(client, '/video_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, inputVideo, dimensions.height, dimensions.width, 'video-to-video', Number(duration), 9, seed, true, 1, true]);
@@ -741,8 +741,8 @@ app.post('/api/film/projects/:projectId/export', async (req, res) => {
       const take = (project.takes || []).find(t => t.id === shot.selectedTakeId) || (project.takes || []).find(t => t.shotId === shot.id);
       const asset = take?.assetId ? (project.assets || []).find(a => a.id === take.assetId) : null;
       if (!asset?.filename) continue;
-      const inputPath = path.resolve(assetDir, path.basename(asset.filename));
-      if (!inputPath.startsWith(path.resolve(assetDir) + path.sep) || !fs.existsSync(inputPath)) continue;
+      const inputPath = resolveMediaPath(asset.uri || asset.filename, { root, outputDir, assetDir });
+      if (!inputPath || !fs.existsSync(inputPath)) continue;
       clips.push({ shotId: shot.id, inputPath, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
     }
     if (!clips.length) return res.status(400).json({ error: 'No usable selected takes are available for export.' });
@@ -776,8 +776,8 @@ app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) 
     const asset = requestedAssetId ? (project.assets || []).find(item => item.id === requestedAssetId) : null;
     if (!asset?.filename) return res.status(400).json({ error: 'Select a take with an imported media asset before rendering.' });
 
-    const inputPath = path.resolve(assetDir, path.basename(asset.filename));
-    if (!inputPath.startsWith(path.resolve(assetDir) + path.sep) || !fs.existsSync(inputPath)) return res.status(404).json({ error: 'Source media file is unavailable.' });
+    const inputPath = resolveMediaPath(asset.uri || asset.filename, { root, outputDir, assetDir });
+    if (!inputPath || !fs.existsSync(inputPath)) return res.status(404).json({ error: 'Source media file is unavailable.' });
 
     const rendered = await renderShot({ inputPath, outputDir, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
     const outputAsset = filmStore.addAsset(req.params.projectId, {
