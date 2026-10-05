@@ -1142,9 +1142,10 @@ try { assertAuthConfigured(); } catch (error) { console.error(error.message); if
 
 initDatabase().then(async () => {
   try {
-    if (filmStore.listProjects().length === 0) {
-      const persistedProjects = await listFilmProjectsFromDatabase();
-      if (persistedProjects.length) filmStore.replaceProjects(persistedProjects);
+    const persistedProjects = await listFilmProjectsFromDatabase();
+    if (persistedProjects.length) {
+      // PostgreSQL is the durable project source of truth; the local JSON file is only a runtime/cache fallback.
+      filmStore.replaceProjects(persistedProjects);
     }
   } catch (error) {
     console.error('Film project database hydration skipped:', error?.message || error);
