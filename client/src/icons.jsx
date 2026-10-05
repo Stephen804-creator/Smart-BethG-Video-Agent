@@ -28,6 +28,16 @@ const paths = {
   Volume: [['path',{d:'M11 5 6 9H3v6h3l5 4V5Z'}],['path',{d:'M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12'}]],
   Layers: [['path',{d:'m12 2 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 17l9 5 9-5'}]],
   Timer: [['circle',{cx:'12',cy:'13',r:'8'}],['path',{d:'M12 9v4l2 2M9 2h6'}]],
+  User: [['circle',{cx:'12',cy:'8',r:'3'}],['path',{d:'M5 21a7 7 0 0 1 14 0'}]],
+  Globe: [['circle',{cx:'12',cy:'12',r:'9'}],['path',{d:'M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'}]],
+  ScrollText: [['path',{d:'M7 3h12v18H7a3 3 0 0 1 0-6h12M7 3a3 3 0 0 0 0 6h12'}],['path',{d:'M10 12h6M10 16h5'}]],
+  Scale: [['path',{d:'M12 3v18M5 6h14M7 6l-3 6h6L7 6ZM17 6l-3 6h6l-3-6ZM8 21h8'}]],
+  FileText: [['path',{d:'M6 3h9l3 3v15H6V3Z'}],['path',{d:'M14 3v4h4M9 12h6M9 16h6'}]],
+  Box: [['path',{d:'m12 3 8 4-8 4-8-4 8-4ZM4 7v10l8 4 8-4V7M12 11v10'}]],
+  ArrowLeftRight: [['path',{d:'M3 8h14M13 4l4 4-4 4M21 16H7M11 12l-4 4 4 4'}]],
+  Lightbulb: [['path',{d:'M9 18h6M10 22h4M8 14a6 6 0 1 1 8 0c-1 1-2 2-2 4h-4c0-2-1-3-2-4Z'}]],
+  Upload: [['path',{d:'M12 16V4M7 9l5-5 5 5M5 20h14'}]],
+  Shield: [['path',{d:'M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3Z'}],['path',{d:'m9 12 2 2 4-5'}]],
   CircleAlert: [['circle',{cx:'12',cy:'12',r:'9'}],['path',{d:'M12 8v4M12 16h.01'}]],
   Check: [['path',{d:'m5 12 4 4L19 6'}]]
 };
