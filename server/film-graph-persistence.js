@@ -47,24 +47,24 @@ export async function persistCanonicalFilmGraph(db, graph) {
 
     for (const c of graph.characters || []) {
       await upsert(client, `INSERT INTO film_characters
-        (id,project_id,name,role,description,appearance,wardrobe,personality,relationships,voice_identity,references,continuity_constraints)
+        (id,project_id,name,role,description,appearance,wardrobe,personality,relationships,voice_identity,reference_assets,continuity_constraints)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         ON CONFLICT (id) DO UPDATE SET
           project_id=EXCLUDED.project_id,name=EXCLUDED.name,role=EXCLUDED.role,
           description=EXCLUDED.description,appearance=EXCLUDED.appearance,wardrobe=EXCLUDED.wardrobe,
           personality=EXCLUDED.personality,relationships=EXCLUDED.relationships,voice_identity=EXCLUDED.voice_identity,
-          references=EXCLUDED.references,continuity_constraints=EXCLUDED.continuity_constraints,updated_at=NOW()`,
+          references=EXCLUDED.reference_assets,continuity_constraints=EXCLUDED.continuity_constraints,updated_at=NOW()`,
         [c.id,p.id,c.name||'',c.role||'',c.description||'',j(c.appearance,{}),j(c.wardrobe,{}),j(c.personality,{}),j(c.relationships,[]),j(c.voiceIdentity,{}),j(c.references,[]),j(c.continuityConstraints,{})]);
     }
     count('characters', graph.characters);
 
     for (const l of graph.locations || []) {
       await upsert(client, `INSERT INTO film_locations
-        (id,project_id,name,description,environment,time_variants,lighting,references,continuity_constraints)
+        (id,project_id,name,description,environment,time_variants,lighting,reference_assets,continuity_constraints)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         ON CONFLICT (id) DO UPDATE SET
           name=EXCLUDED.name,description=EXCLUDED.description,environment=EXCLUDED.environment,
-          time_variants=EXCLUDED.time_variants,lighting=EXCLUDED.lighting,references=EXCLUDED.references,
+          time_variants=EXCLUDED.time_variants,lighting=EXCLUDED.lighting,reference_assets=EXCLUDED.reference_assets,
           continuity_constraints=EXCLUDED.continuity_constraints,updated_at=NOW()`,
         [l.id,p.id,l.name||'Location',l.description||'',j(l.environment,{}),j(l.timeVariants,{}),j(l.lighting,{}),j(l.references,[]),j(l.continuityConstraints,{})]);
     }
@@ -72,11 +72,11 @@ export async function persistCanonicalFilmGraph(db, graph) {
 
     for (const prop of graph.props || []) {
       await upsert(client, `INSERT INTO film_props
-        (id,project_id,name,description,appearance,owner_character_id,references,continuity_constraints)
+        (id,project_id,name,description,appearance,owner_character_id,reference_assets,continuity_constraints)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         ON CONFLICT (id) DO UPDATE SET
           name=EXCLUDED.name,description=EXCLUDED.description,appearance=EXCLUDED.appearance,
-          owner_character_id=EXCLUDED.owner_character_id,references=EXCLUDED.references,
+          owner_character_id=EXCLUDED.owner_character_id,reference_assets=EXCLUDED.reference_assets,
           continuity_constraints=EXCLUDED.continuity_constraints,updated_at=NOW()`,
         [prop.id,p.id,prop.name||'Prop',prop.description||'',j(prop.appearance,{}),prop.ownerCharacterId||null,j(prop.references,[]),j(prop.continuityConstraints,{})]);
     }
