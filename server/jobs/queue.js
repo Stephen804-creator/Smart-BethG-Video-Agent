@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
 
-export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
+export function createJobQueue({ concurrency = 1, maxQueue = 20, onChange = null } = {}) {
   const jobs = new Map();
   const pending = [];
   let active = 0;
+
+  function persist(job) { try { if (typeof onChange === 'function') onChange(snapshot(job)); } catch {} }
 
   function snapshot(job) {
     return {
@@ -29,20 +31,24 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
       active += 1;
       job.status = 'running';
       job.startedAt = new Date().toISOString();
+      persist(job);
       Promise.resolve()
         .then(job.task)
         .then(result => {
           if (job.cancelRequested) { job.status = 'cancelled'; job.cancelledAt = new Date().toISOString(); return; }
           job.status = 'completed';
           job.result = result;
+          persist(job);
         })
         .catch(error => {
           if (job.cancelRequested) { job.status = 'cancelled'; job.cancelledAt = new Date().toISOString(); return; }
           job.status = 'failed';
           job.error = error?.message || 'Job failed.';
+          persist(job);
         })
         .finally(() => {
           job.completedAt = new Date().toISOString();
+          persist(job);
           active -= 1;
           void drain();
         });
@@ -85,6 +91,7 @@ export function createJobQueue({ concurrency = 1, maxQueue = 20 } = {}) {
     if (job.status === 'queued') {
       job.status = 'cancelled';
       job.cancelledAt = new Date().toISOString();
+      persist(job);
     }
     return snapshot(job);
   }
