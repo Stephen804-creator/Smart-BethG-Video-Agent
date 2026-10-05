@@ -112,10 +112,6 @@ export async function initDatabase() {
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS dataset_id TEXT;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS actual_cost_usd NUMERIC;
-    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS payload JSONB;
-    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS worker_id TEXT;
-    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
-
     CREATE TABLE IF NOT EXISTS media_jobs (
       id TEXT PRIMARY KEY,
       owner_user_id TEXT REFERENCES app_users(id),
