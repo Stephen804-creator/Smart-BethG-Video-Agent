@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 /**
  * Film Intelligence boundary.
  *
@@ -28,7 +30,7 @@ export function buildFilmIntelligenceContext(graph) {
 export function createFilmProposal({ type, targetId, changes = {}, reason = '', expectedEffects = [] }) {
   if (!type || !targetId) throw new Error('A film proposal requires a type and targetId.');
   return {
-    id: `proposal-${cryptoRandomId()}`,
+    id: `proposal-${crypto.randomUUID()}`,
     type,
     targetId,
     changes,
@@ -56,8 +58,4 @@ export function validateFilmProposal(proposal, graph) {
     requiresApproval: proposal?.requiresApproval !== false,
     reasons: proposal?.targetId && knownIds.has(proposal.targetId) ? [] : ['TARGET_NOT_IN_PROJECT']
   };
-}
-
-function cryptoRandomId() {
-  return Math.random().toString(36).slice(2, 10);
 }
