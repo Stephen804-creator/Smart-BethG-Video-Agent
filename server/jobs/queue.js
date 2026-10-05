@@ -5,7 +5,8 @@ export function createJobQueue({
   maxQueue = 20,
   onChange = null,
   claim = null,
-  release = null
+  release = null,
+  heartbeat = null
 } = {}) {
   const jobs = new Map();
   const pending = [];
@@ -59,6 +60,10 @@ export function createJobQueue({
         const controller = new AbortController();
         job.controller = controller;
 
+        const heartbeatTimer = typeof heartbeat === 'function'
+          ? setInterval(() => { void heartbeat(job.id, job.ownerUserId); }, 30_000)
+          : null;
+
         Promise.resolve()
           .then(() => job.task(controller.signal))
           .then(result => {
@@ -84,6 +89,7 @@ export function createJobQueue({
           .finally(async () => {
             job.completedAt = new Date().toISOString();
             job.controller = null;
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
             persist(job);
             try { if (typeof release === 'function') await release(job.id); } catch {}
             jobs.delete(job.id);
