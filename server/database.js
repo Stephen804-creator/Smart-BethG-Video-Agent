@@ -1,5 +1,8 @@
 import pg from 'pg';
 import crypto from 'node:crypto';
+import { ensureFilmGraphSchema } from './film-graph-schema.js';
+import { projectToCanonicalGraph } from './film-graph-adapter.js';
+import { persistCanonicalFilmGraph } from './film-graph-persistence.js';
 
 const { Pool } = pg;
 let pool = null;
@@ -148,7 +151,18 @@ export async function initDatabase() {
     );
   `);
 
+  await ensureFilmGraphSchema(db);
+
   return { enabled: true };
+}
+
+export async function migrateFilmProjectToCanonical(project, { dryRun = false } = {}) {
+  if (!project?.id) throw new Error('A film project requires an id.');
+  const db = getPool();
+  if (!db) return { enabled: false, dryRun, migrated: false };
+  const graph = projectToCanonicalGraph(project);
+  if (dryRun) return { enabled: true, dryRun: true, migrated: false, graph };
+  return persistCanonicalFilmGraph(db, graph);
 }
 
 export async function saveGenerationToDatabase(record) {
