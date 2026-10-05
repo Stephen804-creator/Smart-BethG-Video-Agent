@@ -44,7 +44,7 @@ export async function ensureFilmGraphSchema(db) {
       personality JSONB NOT NULL DEFAULT '{}'::jsonb,
       relationships JSONB NOT NULL DEFAULT '[]'::jsonb,
       voice_identity JSONB NOT NULL DEFAULT '{}'::jsonb,
-      references JSONB NOT NULL DEFAULT '[]'::jsonb,
+      reference_assets JSONB NOT NULL DEFAULT '[]'::jsonb,
       continuity_constraints JSONB NOT NULL DEFAULT '{}'::jsonb,
       approved_identity_asset_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -59,7 +59,7 @@ export async function ensureFilmGraphSchema(db) {
       environment JSONB NOT NULL DEFAULT '{}'::jsonb,
       time_variants JSONB NOT NULL DEFAULT '{}'::jsonb,
       lighting JSONB NOT NULL DEFAULT '{}'::jsonb,
-      references JSONB NOT NULL DEFAULT '[]'::jsonb,
+      reference_assets JSONB NOT NULL DEFAULT '[]'::jsonb,
       continuity_constraints JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -72,7 +72,7 @@ export async function ensureFilmGraphSchema(db) {
       description TEXT NOT NULL DEFAULT '',
       appearance JSONB NOT NULL DEFAULT '{}'::jsonb,
       owner_character_id TEXT REFERENCES film_characters(id) ON DELETE SET NULL,
-      references JSONB NOT NULL DEFAULT '[]'::jsonb,
+      reference_assets JSONB NOT NULL DEFAULT '[]'::jsonb,
       continuity_constraints JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
