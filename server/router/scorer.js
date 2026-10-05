@@ -1,24 +1,32 @@
+import { trainingEligible } from './provider-contract.js';
+
+function supportsTask(candidate, task) {
+  const c = candidate.capabilities || {};
+  if (task === 'text-to-video') return c.textToVideo;
+  if (task === 'image-to-video') return c.imageToVideo;
+  if (task === 'video-to-video') return c.videoToVideo;
+  return false;
+}
+
 export function scoreProvider(candidate, request = {}) {
   const c = candidate.capabilities || {};
   let score = 0;
 
-  if (!candidate.configured) return -Infinity;
-
-  // If health is known, an unhealthy provider is not eligible.
+  if (!candidate.configured || candidate.implemented === false) return -Infinity;
   if (candidate.health && candidate.health.ok === false) return -Infinity;
-
-  // Never route to a paid provider when the caller has explicitly disabled paid use.
   if (request.allowPaid === false && candidate.pricing === 'paid') return -Infinity;
+  if (!supportsTask(candidate, request.task || 'text-to-video')) return -Infinity;
+  if (!trainingEligible(candidate, request)) return -Infinity;
 
-  if (request.task === 'text-to-video' && c.textToVideo) score += 40;
-  if (request.task === 'image-to-video' && c.imageToVideo) score += 45;
-  if (request.task === 'video-to-video' && c.videoToVideo) score += 50;
+  if (request.task === 'text-to-video') score += 40;
+  if (request.task === 'image-to-video') score += 45;
+  if (request.task === 'video-to-video') score += 50;
   if (request.continuation && c.continuation) score += 25;
 
-  if (request.preferLocal && candidate.type === 'local-or-remote') score += 20;
+  if (request.preferLocal && (candidate.type === 'local' || candidate.type === 'local-or-remote')) score += 20;
   if (request.preferFree && candidate.pricing === 'free-quota') score += 20;
+  if (request.preferLocal && candidate.pricing === 'local') score += 10;
 
-  // Explicit provider preference is stronger than the general scoring rules.
   if (request.providerId && candidate.id === request.providerId) score += 1000;
 
   return score;

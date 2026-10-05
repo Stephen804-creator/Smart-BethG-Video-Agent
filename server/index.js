@@ -186,7 +186,8 @@ function readSettings() {
     hfToken: process.env.HF_TOKEN || '',
     lumaApiKey: process.env.LUMAAI_API_KEY || '',
     lumaModel: ['ray-flash-2', 'ray-2'].includes(process.env.LUMA_MODEL) ? process.env.LUMA_MODEL : 'ray-flash-2',
-    comfyUrl: process.env.COMFYUI_URL || 'http://127.0.0.1:8188'
+    comfyUrl: process.env.COMFYUI_URL || 'http://127.0.0.1:8188',
+    comfyModelProfile: process.env.COMFYUI_MODEL_PROFILE || ''
   };
 }
 
@@ -464,7 +465,7 @@ async function executeCanonicalGeneration(input = {}) {
     let comfy = { ok: false };
     try { comfy = await getComfyHealth(await assertSafeComfyUrl(settings.comfyUrl)); } catch {}
     const enriched = available.map(item => item.id === 'comfyui' ? { ...item, configured: comfy.ok, health: comfy } : item);
-    const decision = chooseProvider(enriched, { task: operation, allowPaid, preferFree: !allowPaid });
+    const decision = chooseProvider(enriched, { task: operation, allowPaid, preferFree: !allowPaid, preferLocal: input.preferLocal !== false, purpose: input.purpose || 'production', continuation: Boolean(referenceGenerationId) });
     if (!decision.selected) throw new Error('No configured provider is available for this task. Paid providers are disabled unless explicitly allowed.');
     selectedProvider = decision.selected.id;
   }
@@ -484,7 +485,7 @@ async function executeCanonicalGeneration(input = {}) {
     if (result.generation) result.generation.ownerUserId = input.ownerUserId || null;
     return linkGenerationToFilmShot(input, result);
   }
-  if (selectedProvider === 'comfyui') {
+  if (['comfyui', 'wan2.2-ti2v-5b', 'ltx-2.5', 'vace-wan'].includes(selectedProvider)) {
     const task = normalizeMediaTask({ ...input, operation, prompt, duration, aspectRatio: ratio, requirements: { ...(input.requirements || {}), duration, aspectRatio: ratio, quality: input.requirements?.quality || 'standard' }, metadata: { ...(input.metadata || {}), framing, cameraMovement, lighting } });
     validateMediaTask(task);
     const settings = readSettings();
@@ -1186,6 +1187,7 @@ app.get('/api/settings', (req, res) => {
     hasLumaApiKey: Boolean(s.lumaApiKey),
     lumaModel: s.lumaModel,
     comfyConfigured: Boolean(process.env.COMFYUI_URL),
+    comfyModelProfile: s.comfyModelProfile,
     secretsEditable: false
   });
 });
