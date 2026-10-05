@@ -27,10 +27,11 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, recoverableJobsFromDatabase, markRunningJobsInterrupted } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
+import { canonicalOutputUri, resolveMediaPath, mediaUriForPath } from './media/storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -41,27 +42,21 @@ const dataDir = path.join(root, 'data');
 const jobsFile = path.join(dataDir, 'production-jobs.jsonl');
 const filmStore = createFilmStore(path.join(dataDir, 'film-projects.json'));
 
+// PostgreSQL is the canonical durable store when DATABASE_URL is configured.
 const filmMutationMethods = ['createProject','updateProject','updateStory','addCharacter','updateCharacter','updateWorld','addScene','updateScene','addShot','updateShot','reorderScene','reorderShot','addTake','selectTake','addAsset','updateAsset','attachAssetToShot','attachAssetToTake','addContinuityEvent'];
-for (const method of filmMutationMethods) {
-  const original = filmStore[method].bind(filmStore);
-  filmStore[method] = (...args) => {
-    const result = original(...args);
-    const projectId = args[0] || result?.id;
-    const project = projectId && method !== 'createProject' ? filmStore.getProject(projectId) : result;
-    const snapshot = method === 'createProject' ? result : project;
-    if (snapshot?.id) {
-      saveFilmProjectToDatabase(snapshot).catch(error => console.error('Film project database mirror failed:', error?.message || error));
-    }
-    return result;
-  };
-}
 const assetDir = path.join(dataDir, 'assets');
 const assetStore = createAssetStore({ rootDir: assetDir });
 const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSize: 500 * 1024 * 1024 } });
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
 const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
-const generationQueue = createJobQueue({ concurrency: 1, maxQueue: 10, onChange: job => { void saveJobToDatabase(job).catch(error => console.error('Job persistence failed:', error?.message || error)); } });
+const generationQueue = createJobQueue({
+  concurrency: Number(process.env.GENERATION_CONCURRENCY || 1),
+  maxQueue: Number(process.env.GENERATION_MAX_QUEUE || 10),
+  onChange: job => { void saveJobToDatabase(job).catch(error => console.error('Job persistence failed:', error?.message || error)); },
+  claim: (id, ownerUserId) => claimJob(id, ownerUserId),
+  release: () => true
+});
 const apiRateLimit = rateLimitMiddleware({ limit: 120, windowMs: 60 * 1000, keyPrefix: 'api' });
 
 fs.mkdirSync(outputDir, { recursive: true });
