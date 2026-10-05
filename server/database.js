@@ -130,6 +130,13 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_media_jobs_owner ON media_jobs(owner_user_id);
     CREATE INDEX IF NOT EXISTS idx_media_jobs_created ON media_jobs(created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+      bucket_key TEXT PRIMARY KEY,
+      window_started_at TIMESTAMPTZ NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS media_knowledge_refs (
       generation_id TEXT NOT NULL,
       knowledge_id TEXT NOT NULL,
@@ -414,6 +421,37 @@ export async function saveJobToDatabase(job) {
     ]
   );
   return true;
+}
+
+export async function consumeRateLimitFromDatabase(bucketKey, { limit = 60, windowMs = 60_000 } = {}) {
+  const db = getPool();
+  if (!db) return null;
+  const now = Date.now();
+  const windowStart = new Date(now - windowMs);
+  const result = await db.query(
+    `INSERT INTO rate_limit_buckets (bucket_key, window_started_at, request_count, updated_at)
+     VALUES ($1, NOW(), 1, NOW())
+     ON CONFLICT (bucket_key) DO UPDATE SET
+       window_started_at = CASE
+         WHEN rate_limit_buckets.window_started_at < $2 THEN NOW()
+         ELSE rate_limit_buckets.window_started_at
+       END,
+       request_count = CASE
+         WHEN rate_limit_buckets.window_started_at < $2 THEN 1
+         ELSE rate_limit_buckets.request_count + 1
+       END,
+       updated_at = NOW()
+     RETURNING window_started_at, request_count`,
+    [bucketKey, windowStart]
+  );
+  const row = result.rows[0];
+  const started = new Date(row.window_started_at).getTime();
+  const retryAfterMs = Math.max(0, windowMs - (now - started));
+  return {
+    allowed: Number(row.request_count) <= limit,
+    remaining: Math.max(0, limit - Number(row.request_count)),
+    retryAfterMs
+  };
 }
 
 export async function claimJob(jobId, ownerUserId = null) {
