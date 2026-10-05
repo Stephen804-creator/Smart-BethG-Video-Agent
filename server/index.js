@@ -732,14 +732,14 @@ app.patch('/api/film/projects/:projectId/assets/:assetId', (req, res) => {
   res.json({ asset });
 });
 
-app.post('/api/film/projects/:projectId/assets/:assetId/attach-shot', (req, res) => {
+app.post('/api/film/projects/:projectId/assets/:assetId/attach-shot', async (req, res) => {
   const project = filmStore.attachAssetToShot(req.params.projectId, req.params.assetId, req.body?.shotId);
   if (!project) return res.status(404).json({ error: 'Film project, asset or shot not found.' });
   await persistFilmProject(project);
   res.json({ project });
 });
 
-app.post('/api/film/projects/:projectId/assets/:assetId/attach-take', (req, res) => {
+app.post('/api/film/projects/:projectId/assets/:assetId/attach-take', async (req, res) => {
   const project = filmStore.attachAssetToTake(req.params.projectId, req.params.assetId, req.body?.takeId);
   if (!project) return res.status(404).json({ error: 'Film project, asset or take not found.' });
   await persistFilmProject(project);
@@ -752,7 +752,7 @@ app.get('/api/film/projects/:projectId/assets', (req, res) => {
   res.json({ assets: project.assets || [] });
 });
 
-app.post('/api/film/projects/:projectId/assets', (req, res) => {
+app.post('/api/film/projects/:projectId/assets', async (req, res) => {
   const asset = filmStore.addAsset(req.params.projectId, req.body || {});
   if (!asset) return res.status(404).json({ error: 'Film project not found.' });
   res.status(201).json({ asset });
