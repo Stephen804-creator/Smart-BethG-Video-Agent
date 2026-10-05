@@ -495,6 +495,28 @@ async function executeCanonicalGeneration(input = {}) {
   throw new Error('Unknown provider.');
 }
 
+async function resolveQueuedTask(record) {
+  const payload = record?.payload || {};
+  if (record?.type === 'video-generation' || record?.type === 'media-generation') {
+    return signal => executeCanonicalGeneration({ ...payload, signal });
+  }
+  if (record?.type === 'production-execution') {
+    return async signal => {
+      const runner = createProductionRunner({
+        outputDir,
+        jobsFile,
+        settings: readSettings,
+        workflowPath: comfyWorkflowPath,
+        executeTask: executeCanonicalGeneration,
+        persistJob: saveJobToDatabase,
+        readPersistedJobs: projectId => listJobsFromDatabase(payload.options?.ownerUserId || record.ownerUserId, 100, projectId)
+      });
+      return runner.execute(payload.graph || {}, { ...(payload.options || {}), signal });
+    };
+  }
+  return null;
+}
+
 async function persistFilmProject(project) {
   if (!project) return project;
   if (!process.env.DATABASE_URL) return project;
@@ -1041,7 +1063,16 @@ app.post('/api/media/execution-plan', (req, res) => {
 app.post('/api/production/execute', generationRateLimit, async (req, res) => {
   try {
     const graph = validateProductionGraphInput(req.body || {});
-    const job = generationQueue.enqueue('production-execution', async () => {
+    const payload = {
+      graph,
+      options: {
+        allowPaid: req.body?.allowPaid === true,
+        preferLocal: req.body?.preferLocal !== false,
+        providerId: req.body?.providerId || '',
+        ownerUserId: getSessionUserId(req)
+      }
+    };
+    const job = generationQueue.enqueue('production-execution', async signal => {
       const runner = createProductionRunner({
         outputDir,
         jobsFile,
@@ -1049,14 +1080,10 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
         workflowPath: comfyWorkflowPath,
         executeTask: executeCanonicalGeneration,
         persistJob: saveJobToDatabase,
-        readPersistedJobs: projectId => listJobsFromDatabase(getSessionUserId(req), 100, projectId)
+        readPersistedJobs: projectId => listJobsFromDatabase(payload.options.ownerUserId, 100, projectId)
       });
-      return runner.execute(graph, {
-        allowPaid: req.body?.allowPaid === true,
-        preferLocal: req.body?.preferLocal !== false,
-        providerId: req.body?.providerId || ''
-      });
-    }, { ownerUserId: getSessionUserId(req) });
+      return runner.execute(payload.graph, { ...payload.options, signal });
+    }, { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     const status = error?.statusCode || 500;
