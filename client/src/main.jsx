@@ -56,6 +56,7 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [progress, setProgress] = useState(0);
   const [selectedLayer, setSelectedLayer] = useState('base');
+  const [jobCost, setJobCost] = useState(null);
   const [activeJobId, setActiveJobId] = useState(null);
   const [retryJobId, setRetryJobId] = useState(null);
   const [authenticated, setAuthenticated] = useState(false);
@@ -271,12 +272,15 @@ function App() {
       if (!jobId) throw new Error('The server did not return a job ID.');
       setActiveJobId(jobId);
       setRetryJobId(null);
+      setJobCost(null);
 
       for (;;) {
         await new Promise(resolve => setTimeout(resolve, 2500));
         const poll = await apiFetch('/jobs/' + jobId);
         const data = await poll.json();
         if (!poll.ok) throw new Error(data.error || 'Could not read generation job.');
+        const costResponse = await apiFetch('/jobs/' + jobId + '/cost');
+        if (costResponse.ok) setJobCost(await costResponse.json());
         if (data.job?.status === 'cancelled') { setStatus('Generation cancelled'); notify('Generation cancelled'); break; }
         if (data.job?.status === 'completed') {
           setResult(data.job.result);
@@ -602,11 +606,20 @@ function App() {
 
   async function reviewFilmProject(mode = 'review') {
     if (!filmProjectId) return;
-    const r = await apiFetch( '/film/projects/' + filmProjectId + '/assistant', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode })
-    });
-    const data = await r.json();
-    if (r.ok) { setFilmReview(data); setFilmTab('assistant'); setStatus('Production review ready'); }
+    try {
+      const r = await apiFetch('/film/projects/' + filmProjectId + '/assistant', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Production review failed.');
+      setFilmReview(data);
+      setFilmTab('assistant');
+      setStatus('Production review ready');
+      notify(mode === 'coverage' ? 'Coverage analysis complete' : mode === 'continuity' ? 'Continuity analysis complete' : mode === 'next-step' ? 'Next-step analysis complete' : 'Production review complete', 'success');
+    } catch (e) {
+      setStatus(e.message || 'Production review failed');
+      notify(e.message || 'Production review failed', 'error');
+    }
   }
 
   async function selectFilmTake(shotId, takeId) {
@@ -1212,7 +1225,13 @@ function App() {
       </div></div>}
     </aside>
     <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent film timeline</footer>
-    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
+    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.{jobCost?.estimatedCostUsd != null ? ' Estimated cost:  className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
+    {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
+    {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>}
+  </div>;}
+
+createRoot(document.getElementById('root')).render(<App/>);
+ + Number(jobCost.estimatedCostUsd).toFixed(4) : ''}</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
     {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
     {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>}
   </div>;}
