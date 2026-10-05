@@ -27,7 +27,7 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, recoverableJobsFromDatabase, markRunningJobsInterrupted } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
@@ -50,12 +50,14 @@ const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSi
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
 const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
+const workerId = process.env.WORKER_ID || `cinematic-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 const generationQueue = createJobQueue({
   concurrency: Number(process.env.GENERATION_CONCURRENCY || 1),
   maxQueue: Number(process.env.GENERATION_MAX_QUEUE || 10),
   onChange: job => { void saveJobToDatabase(job).catch(error => console.error('Job persistence failed:', error?.message || error)); },
-  claim: (id, ownerUserId) => claimJob(id, ownerUserId),
-  release: () => true
+  claim: (id, ownerUserId) => claimJob(id, ownerUserId, workerId),
+  heartbeat: id => heartbeatJob(id, workerId),
+  release: id => releaseJobClaim(id, workerId)
 });
 const apiRateLimit = rateLimitMiddleware({ limit: 120, windowMs: 60 * 1000, keyPrefix: 'api' });
 
@@ -1228,7 +1230,6 @@ initDatabase().then(async () => {
     }
 
     if (process.env.DATABASE_URL) {
-      await markRunningJobsInterrupted();
       const queuedJobs = await recoverableJobsFromDatabase(null, 100);
       await generationQueue.recover(queuedJobs, resolveQueuedTask);
       if (queuedJobs.length) console.log(`Recovered ${queuedJobs.length} queued generation job(s) from PostgreSQL.`);
