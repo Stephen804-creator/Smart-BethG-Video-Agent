@@ -79,14 +79,18 @@ function App() {
     '/settings': 'settings'
   };
 
-  function navigate(path) {
-    const target = routes[path] ? path : '/generator';
-    window.history.pushState({}, '', target);
+  function applyRoute(target) {
+    const view = routes[target] || 'generator';
     setRoute(target);
-    const view = routes[target];
-    if (view === 'generator') { setFilmMode(false); setShowWorkspaceMenu(false); }
-    else if (view === 'settings') { setFilmMode(false); setShowWorkspaceMenu(false); setShowSettings(true); }
-    else {
+    if (view === 'generator') {
+      setFilmMode(false);
+      setShowWorkspaceMenu(false);
+      setShowSettings(false);
+    } else if (view === 'settings') {
+      setFilmMode(false);
+      setShowWorkspaceMenu(false);
+      setShowSettings(true);
+    } else {
       setShowSettings(false);
       setShowWorkspaceMenu(true);
       setFilmMode(true);
@@ -96,13 +100,19 @@ function App() {
     }
   }
 
+  function navigate(path) {
+    const target = routes[path] ? path : '/generator';
+    window.history.pushState({}, '', target);
+    applyRoute(target);
+  }
+
   useEffect(() => {
     const onPopState = () => {
-      const path = window.location.pathname;
-      setRoute(routes[path] ? path : '/generator');
+      const target = routes[window.location.pathname] ? window.location.pathname : '/generator';
+      applyRoute(target);
     };
     window.addEventListener('popstate', onPopState);
-    navigate(window.location.pathname || '/generator');
+    applyRoute(routes[window.location.pathname] ? window.location.pathname : '/generator');
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
