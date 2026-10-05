@@ -1199,6 +1199,7 @@ function App() {
       </section>
       </section>
     </main>
+    </div>
     <aside className="inspector" aria-label="Generation inspector">
       <div className="inspector-head"><div><span className="eyebrow">INSPECTOR</span><h2>Shot settings</h2></div><Icon name="PanelRight" size={18}/></div>
       <div className="inspector-section">
