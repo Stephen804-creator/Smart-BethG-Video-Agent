@@ -4,8 +4,15 @@ import path from 'path';
 import { getComfyHealth, queueComfyWorkflow, getComfyHistory, getComfyViewUrl } from '../comfyui.js';
 import { normalizeMediaTask, validateMediaTask } from './media-task.js';
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function sleep(ms, signal) {
+  if (signal?.aborted) return Promise.reject(signal.reason || Object.assign(new Error('Operation cancelled.'), { name: 'AbortError' }));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(signal.reason || Object.assign(new Error('Operation cancelled.'), { name: 'AbortError' }));
+    }, { once: true });
+  });
 }
 
 function replacePlaceholders(value, task) {
@@ -52,7 +59,7 @@ export async function createComfyWorker({ baseUrl, workflowPath, outputDir }) {
     configured: Boolean(workflowPath),
     health,
 
-    async execute(input) {
+    async execute(input, { signal } = {}) {
       const task = normalizeMediaTask(input);
       validateMediaTask(task);
 
@@ -80,7 +87,7 @@ export async function createComfyWorker({ baseUrl, workflowPath, outputDir }) {
       let history = null;
 
       while (Date.now() < deadline) {
-        await sleep(2000);
+        await sleep(2000, signal);
         history = await getComfyHistory(baseUrl, promptId);
         const entry = history?.[promptId];
 
@@ -92,7 +99,7 @@ export async function createComfyWorker({ baseUrl, workflowPath, outputDir }) {
         if (media) {
           fs.mkdirSync(outputDir, { recursive: true });
           const sourceUrl = getComfyViewUrl(baseUrl, media);
-          const response = await fetch(sourceUrl);
+          const response = await fetch(sourceUrl, { signal });
           if (!response.ok) throw new Error(`ComfyUI produced an output, but it could not be downloaded (HTTP ${response.status}).`);
 
           const filename = `${Date.now()}-${promptId.slice(0, 8)}.mp4`;
