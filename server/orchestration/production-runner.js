@@ -4,16 +4,17 @@ import { normalizeMediaTask, validateMediaTask } from '../workers/media-task.js'
 
 function now() { return new Date().toISOString(); }
 
-export function createProductionRunner({ jobsFile, executeTask }) {
+export function createProductionRunner({ jobsFile, executeTask, persistJob = null, readPersistedJobs = null }) {
   if (typeof executeTask !== 'function') throw new Error('The production runner requires the canonical media execution function.');
   fs.mkdirSync(path.dirname(jobsFile), { recursive: true });
 
-  function save(job) {
-    fs.appendFileSync(jobsFile, JSON.stringify(job) + '\n');
+  async function save(job) {
+    if (typeof persistJob === 'function') await persistJob({ id: job.job_id, type: 'production-execution', status: job.status, createdAt: job.created_at, startedAt: job.started_at, completedAt: job.completed_at, result: job, error: job.error || null });
     return job;
   }
 
-  function readJobs(projectId = null) {
+  async function readJobs(projectId = null) {
+    if (typeof readPersistedJobs === 'function') return readPersistedJobs(projectId);
     try {
       const rows = fs.readFileSync(jobsFile, 'utf8')
         .split('\n')
@@ -77,7 +78,7 @@ export function createProductionRunner({ jobsFile, executeTask }) {
         validateMediaTask(task);
         job.status = 'running';
         job.started_at = now();
-        save(job);
+        await save(job);
 
         const result = await executeTask({
           ...task,
@@ -93,12 +94,12 @@ export function createProductionRunner({ jobsFile, executeTask }) {
         job.provider = result?.generation?.provider || result?.provider || job.provider;
         job.output = result?.videoUrl || result?.generation?.output || result;
         job.evaluation = result?.qualityControl || null;
-        save(job);
+        await save(job);
       } catch (error) {
         job.status = 'failed';
         job.completed_at = now();
         job.error = error?.message || 'Canonical media pipeline failed.';
-        save(job);
+        await save(job);
       }
 
       execution.jobs.push(job);
