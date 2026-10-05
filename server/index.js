@@ -1207,11 +1207,18 @@ initDatabase().then(async () => {
   try {
     const persistedProjects = await listFilmProjectsFromDatabase();
     if (persistedProjects.length) {
-      // PostgreSQL is the durable project source of truth; the local JSON file is only a runtime/cache fallback.
+      // PostgreSQL is the canonical project store; local JSON is only a local runtime cache.
       filmStore.replaceProjects(persistedProjects);
     }
+
+    if (process.env.DATABASE_URL) {
+      await markRunningJobsInterrupted();
+      const queuedJobs = await recoverableJobsFromDatabase(null, 100);
+      await generationQueue.recover(queuedJobs, resolveQueuedTask);
+      if (queuedJobs.length) console.log(`Recovered ${queuedJobs.length} queued generation job(s) from PostgreSQL.`);
+    }
   } catch (error) {
-    console.error('Film project database hydration skipped:', error?.message || error);
+    console.error('Durable state recovery skipped:', error?.message || error);
   }
   app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
 }).catch(error => {
