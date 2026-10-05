@@ -277,26 +277,35 @@ function buildShotPrompt({ prompt, framing, cameraMovement, lighting }) {
   ].join(' ');
 }
 
-async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000) {
+async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000, signal = null) {
+  if (signal?.aborted) throw signal.reason || Object.assign(new Error('Operation cancelled.'), { name: 'AbortError' });
   const job = client.submit(endpoint, payload);
   let finalData = null;
   let lastStatus = null;
   const deadline = Date.now() + timeoutMs;
 
-  for await (const message of job) {
-    if (Date.now() > deadline) {
-      try { await job.return?.(); } catch {}
-      throw new Error(`LTX generation exceeded the ${Math.round(timeoutMs / 60000)} minute worker timeout.`);
+  try {
+    for await (const message of job) {
+      if (signal?.aborted) {
+        try { await job.return?.(); } catch {}
+        throw signal.reason || Object.assign(new Error('Operation cancelled.'), { name: 'AbortError' });
+      }
+      if (Date.now() > deadline) {
+        try { await job.return?.(); } catch {}
+        throw new Error(`LTX generation exceeded the ${Math.round(timeoutMs / 60000)} minute worker timeout.`);
+      }
+      if (message.type === 'status') lastStatus = message;
+      if (message.type === 'data') finalData = message.data;
     }
-    if (message.type === 'status') lastStatus = message;
-    if (message.type === 'data') finalData = message.data;
+  } finally {
+    try { signal?.removeEventListener?.('abort', () => {}); } catch {}
   }
 
   if (!finalData) throw new Error(lastStatus?.message || 'LTX completed without returning a video.');
   return finalData;
 }
 
-async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId, projectId, sceneId, shotId }) {
+async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId, projectId, sceneId, shotId, signal }) {
   const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
   const hasVisualReference = Boolean(reference?.output);
   const continuityPrompt = reference ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.' : '';
@@ -316,9 +325,9 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
     if (!referencePath || !fs.existsSync(referencePath)) throw new Error('The selected continuity video is no longer available on the server.');
     mode = 'video-to-video';
     const inputVideo = await handle_file(referencePath);
-    finalData = await runLtxJob(client, '/video_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, inputVideo, dimensions.height, dimensions.width, 'video-to-video', Number(duration), 9, seed, true, 1, true]);
+    finalData = await runLtxJob(client, '/video_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, inputVideo, dimensions.height, dimensions.width, 'video-to-video', Number(duration), 9, seed, true, 1, true], 15 * 60 * 1000, signal);
   } else {
-    finalData = await runLtxJob(client, '/text_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, null, dimensions.height, dimensions.width, 'text-to-video', Number(duration), 9, seed, true, 1, true]);
+    finalData = await runLtxJob(client, '/text_to_video', [shotPrompt, 'worst quality, inconsistent motion, blurry, jittery, distorted', null, null, dimensions.height, dimensions.width, 'text-to-video', Number(duration), 9, seed, true, 1, true], 15 * 60 * 1000, signal);
   }
 
   const video = getVideoResult(finalData);
@@ -327,7 +336,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   const downloadTimer = setTimeout(() => downloadController.abort(), 120_000);
   let response;
   try {
-    response = await fetch(video.url, { signal: downloadController.signal });
+    response = await fetch(video.url, { signal: signal || downloadController.signal });
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('LTX video download timed out after 120 seconds.');
     throw error;
@@ -355,17 +364,17 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
   return { provider: 'Hugging Face • LTX Video', status: 'Completed', videoUrl: `/output/${filename}`, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database };
 }
 
-async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId, projectId, sceneId, shotId }) {
+async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId, projectId, sceneId, shotId, signal }) {
   const settings = readSettings();
   const apiKey = settings.lumaApiKey || process.env.LUMAAI_API_KEY || '';
   const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
   const finalPrompt = buildShotPrompt({ prompt: [reference ? 'Preserve the established visual identity from the previous shot.' : '', prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
-  const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2' });
+  const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2', signal });
   const downloadController = new AbortController();
   const downloadTimer = setTimeout(() => downloadController.abort(), 120_000);
   let response;
   try {
-    response = await fetch(videoUrl, { signal: downloadController.signal });
+    response = await fetch(videoUrl, { signal: signal || downloadController.signal });
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('Luma video download timed out after 120 seconds.');
     throw error;
@@ -478,7 +487,7 @@ async function executeCanonicalGeneration(input = {}) {
     const settings = readSettings();
     const safeComfyUrl = await assertSafeComfyUrl(settings.comfyUrl);
     const worker = await createComfyWorker({ baseUrl: safeComfyUrl, workflowPath: comfyWorkflowPath, outputDir });
-    const generated = await worker.execute(task);
+    const generated = await worker.execute(task, { signal: input.signal });
     const record = { id: 'gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8), ownerUserId: input.ownerUserId || null, createdAt: new Date().toISOString(), domain: task.domain, operation: task.operation, provider: 'comfyui', workerId: worker.id, model: task.metadata.model || null, workflow: comfyWorkflowPath || null, prompt: task.prompt, requirements: task.requirements, output: generated.output, promptId: generated.promptId, source: generated.source, estimatedCostUsd: estimateGenerationCost({ provider: 'comfyui', duration: task.requirements.duration }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'comfyui', duration: task.requirements.duration }).source };
     const qualityControl = await finalizeGeneratedMedia({ record, task, result: generated, worker: { id: worker.id, provider: 'comfyui', runtime: worker.runtime } });
     return linkGenerationToFilmShot(input, { provider: 'ComfyUI • Open Models', status: 'Completed', videoUrl: generated.output, generation: record, qualityControl: qualityControl.evaluation, database: qualityControl.database });
