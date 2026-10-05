@@ -109,6 +109,7 @@ export async function initDatabase() {
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS dataset_id TEXT;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS actual_cost_usd NUMERIC;
+    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS payload JSONB;
 
     CREATE TABLE IF NOT EXISTS media_jobs (
       id TEXT PRIMARY KEY,
@@ -122,7 +123,8 @@ export async function initDatabase() {
       attempts INTEGER NOT NULL DEFAULT 1,
       retry_of TEXT,
       result JSONB,
-      error TEXT
+      error TEXT,
+      payload JSONB
     );
 
     CREATE INDEX IF NOT EXISTS idx_media_jobs_owner ON media_jobs(owner_user_id);
@@ -392,8 +394,8 @@ export async function saveJobToDatabase(job) {
   if (!db || !job?.id) return false;
   await db.query(
     `INSERT INTO media_jobs
-      (id, owner_user_id, type, status, created_at, started_at, completed_at, cancelled_at, attempts, retry_of, result, error)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      (id, owner_user_id, type, status, created_at, started_at, completed_at, cancelled_at, attempts, retry_of, result, error, payload)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (id) DO UPDATE SET
        status=EXCLUDED.status,
        started_at=EXCLUDED.started_at,
@@ -402,15 +404,66 @@ export async function saveJobToDatabase(job) {
        attempts=EXCLUDED.attempts,
        retry_of=EXCLUDED.retry_of,
        result=EXCLUDED.result,
-       error=EXCLUDED.error`,
+       error=EXCLUDED.error,
+       payload=COALESCE(EXCLUDED.payload, media_jobs.payload)`,
     [
       job.id, job.ownerUserId || null, job.type || 'job', job.status || 'queued',
       job.createdAt || new Date().toISOString(), job.startedAt || null, job.completedAt || null,
       job.cancelledAt || null, Number(job.attempts || 1), job.retryOf || null,
-      JSON.stringify(job.result ?? null), job.error || null
+      JSON.stringify(job.result ?? null), job.error || null, JSON.stringify(job.payload ?? null)
     ]
   );
   return true;
+}
+
+export async function claimJob(jobId, ownerUserId = null) {
+  const db = getPool();
+  if (!db || !jobId) return true;
+  const result = await db.query(
+    `UPDATE media_jobs
+        SET status='running', started_at=COALESCE(started_at, NOW())
+      WHERE id=$1 AND status='queued'
+        AND (owner_user_id=$2 OR owner_user_id IS NULL)
+      RETURNING id`,
+    [jobId, ownerUserId || null]
+  );
+  return result.rowCount === 1;
+}
+
+export async function releaseJobClaim(jobId) {
+  return Boolean(jobId);
+}
+
+export async function recoverableJobsFromDatabase(ownerUserId = null, limit = 100) {
+  const db = getPool();
+  if (!db) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const result = ownerUserId
+    ? await db.query(
+        `SELECT * FROM media_jobs
+         WHERE status='queued' AND (owner_user_id=$1 OR owner_user_id IS NULL)
+         ORDER BY created_at ASC LIMIT $2`,
+        [ownerUserId, safeLimit]
+      )
+    : await db.query(
+        `SELECT * FROM media_jobs WHERE status='queued'
+         ORDER BY created_at ASC LIMIT $1`,
+        [safeLimit]
+      );
+  return result.rows;
+}
+
+export async function markRunningJobsInterrupted() {
+  const db = getPool();
+  if (!db) return 0;
+  const result = await db.query(
+    `UPDATE media_jobs
+        SET status='failed', completed_at=NOW(),
+            error=COALESCE(error, 'Job interrupted because the worker process restarted.')
+      WHERE status='running'
+      RETURNING id`
+  );
+  return result.rowCount || 0;
 }
 
 export async function listJobsFromDatabase(ownerUserId = null, limit = 100, projectId = null) {
