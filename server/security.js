@@ -1,3 +1,5 @@
+import { consumeRateLimitFromDatabase } from './database.js';
+
 import crypto from 'node:crypto';
 
 const SESSION_COOKIE = 'cinematic_session';
@@ -104,16 +106,22 @@ export function consumeRateLimit(key, { limit = 60, windowMs = 60_000 } = {}) {
 }
 
 export function rateLimitMiddleware({ limit, windowMs, keyPrefix }) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const result = consumeRateLimit(`${keyPrefix}:${ip}`, { limit, windowMs });
+    const key = `${keyPrefix}:${ip}`;
+    let result = null;
+    try {
+      if (process.env.DATABASE_URL) result = await consumeRateLimitFromDatabase(key, { limit, windowMs });
+    } catch {}
+    if (!result) result = consumeRateLimit(key, { limit, windowMs });
+
     res.setHeader('X-RateLimit-Limit', String(limit));
     res.setHeader('X-RateLimit-Remaining', String(result.remaining));
     if (!result.allowed) {
       res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
       return res.status(429).json({ error: 'Rate limit exceeded. Try again later.' });
     }
-    next();
+    return next();
   };
 }
 
