@@ -27,7 +27,7 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, createUser, getUserByEmail, getUserById } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, createUser, getUserByEmail, getUserById } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
@@ -61,7 +61,7 @@ const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSi
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
 const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
-const generationQueue = createJobQueue({ concurrency: 1, maxQueue: 10 });
+const generationQueue = createJobQueue({ concurrency: 1, maxQueue: 10, onChange: job => { void saveJobToDatabase(job).catch(error => console.error('Job persistence failed:', error?.message || error)); } });
 const apiRateLimit = rateLimitMiddleware({ limit: 120, windowMs: 60 * 1000, keyPrefix: 'api' });
 
 fs.mkdirSync(outputDir, { recursive: true });
