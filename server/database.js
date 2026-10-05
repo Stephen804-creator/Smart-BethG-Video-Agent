@@ -340,6 +340,18 @@ export async function saveFilmProjectToDatabase(project) {
   return true;
 }
 
+export async function getFilmProjectFromDatabase(projectId, ownerUserId = null) {
+  const db = getPool();
+  if (!db || !projectId) return null;
+  const result = ownerUserId
+    ? await db.query(
+        'SELECT metadata FROM media_projects WHERE id=$1 AND (owner_user_id=$2 OR owner_user_id IS NULL) LIMIT 1',
+        [projectId, ownerUserId]
+      )
+    : await db.query('SELECT metadata FROM media_projects WHERE id=$1 LIMIT 1', [projectId]);
+  return result.rows[0]?.metadata || null;
+}
+
 export async function listFilmProjectsFromDatabase(ownerUserId = null) {
   const db = getPool();
   if (!db) return [];
