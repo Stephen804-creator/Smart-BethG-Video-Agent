@@ -27,7 +27,7 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, createUser, getUserByEmail, getUserById } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
@@ -1027,7 +1027,9 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
         jobsFile,
         settings: readSettings,
         workflowPath: comfyWorkflowPath,
-        executeTask: executeCanonicalGeneration
+        executeTask: executeCanonicalGeneration,
+        persistJob: saveJobToDatabase,
+        readPersistedJobs: projectId => listJobsFromDatabase(getSessionUserId(req), 100, projectId)
       });
       return runner.execute(graph, {
         allowPaid: req.body?.allowPaid === true,
@@ -1045,9 +1047,11 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
 app.get('/api/production/jobs/:projectId', (req, res) => {
   const runner = createProductionRunner({
     jobsFile,
-    executeTask: executeCanonicalGeneration
+    executeTask: executeCanonicalGeneration,
+    persistJob: saveJobToDatabase,
+    readPersistedJobs: projectId => listJobsFromDatabase(getSessionUserId(req), 100, projectId)
   });
-  res.json({ jobs: runner.readJobs(req.params.projectId) });
+  res.json({ jobs: await runner.readJobs(req.params.projectId) });
 });
 
 app.get('/api/knowledge', (req, res) => {
