@@ -707,13 +707,13 @@ app.post('/api/film/projects/:projectId/import-generation', async (req, res) => 
   }
 });
 
-app.post('/api/film/projects/:projectId/takes', (req, res) => {
+app.post('/api/film/projects/:projectId/takes', async (req, res) => {
   const take = filmStore.addTake(req.params.projectId, req.body || {});
   if (!take) return res.status(404).json({ error: 'Film project not found.' });
   res.status(201).json({ take });
 });
 
-app.post('/api/film/projects/:projectId/shots/:shotId/select-take', (req, res) => {
+app.post('/api/film/projects/:projectId/shots/:shotId/select-take', async (req, res) => {
   const project = filmStore.selectTake(req.params.projectId, req.params.shotId, req.body?.takeId);
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
   await persistFilmProject(project);
@@ -738,7 +738,7 @@ app.post('/api/film/projects/:projectId/assets/upload', upload.single('file'), a
   }
 });
 
-app.patch('/api/film/projects/:projectId/assets/:assetId', (req, res) => {
+app.patch('/api/film/projects/:projectId/assets/:assetId', async (req, res) => {
   const asset = filmStore.updateAsset(req.params.projectId, req.params.assetId, req.body || {});
   if (!asset) return res.status(404).json({ error: 'Film project or asset not found.' });
   res.json({ asset });
@@ -835,7 +835,7 @@ app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) 
   }
 });
 
-app.post('/api/film/projects/:projectId/continuity', (req, res) => {
+app.post('/api/film/projects/:projectId/continuity', async (req, res) => {
   const event = filmStore.addContinuityEvent(req.params.projectId, req.body || {});
   if (!event) return res.status(404).json({ error: 'Film project not found.' });
   res.status(201).json({ event });
