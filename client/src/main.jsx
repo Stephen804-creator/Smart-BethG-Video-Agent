@@ -1225,15 +1225,17 @@ function App() {
       </div></div>}
     </aside>
     <footer>V1 • LTX + Luma adapters • Visual continuity • Persistent film timeline</footer>
-    {generating && <div className="generation-overlay" role="status" aria-live="polite"><div className="progress-spinner"/><div className="generation-overlay-copy"><strong>{status}</strong><span>{progress}% · The engine is processing your shot.{jobCost?.estimatedCostUsd != null ? ' Estimated cost:  className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
+    {generating && <div className="generation-overlay" role="status" aria-live="polite">
+      <div className="progress-spinner"/>
+      <div className="generation-overlay-copy">
+        <strong>{status}</strong>
+        <span>{progress}% · The engine is processing your shot.{jobCost?.estimatedCostUsd != null ? ' Estimated cost: $' + Number(jobCost.estimatedCostUsd).toFixed(4) : ''}</span>
+        <button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button>
+      </div>
+    </div>}
     {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
     {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>}
-  </div>;}
-
-createRoot(document.getElementById('root')).render(<App/>);
- + Number(jobCost.estimatedCostUsd).toFixed(4) : ''}</span></div><button className="secondary-button" onClick={cancelGeneration} aria-label="Cancel generation">Cancel</button></div>}
-    {retryJobId && !generating && <div className="retry-banner" role="alert"><span>Generation failed.</span><button className="secondary-button" onClick={retryGeneration}>Retry</button></div>}
-    {notice && <div className={`toast toast-${notice.type}`} role="status" aria-live="polite"><Icon name={notice.type === 'error' ? 'CircleAlert' : 'Check'} size={17}/>{notice.message}</div>}
-  </div>;}
+  </div>;
+}
 
 createRoot(document.getElementById('root')).render(<App/>);
