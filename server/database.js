@@ -108,6 +108,24 @@ export async function initDatabase() {
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS actual_cost_usd NUMERIC;
 
+    CREATE TABLE IF NOT EXISTS media_jobs (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT REFERENCES app_users(id),
+      type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      started_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      cancelled_at TIMESTAMPTZ,
+      attempts INTEGER NOT NULL DEFAULT 1,
+      retry_of TEXT,
+      result JSONB,
+      error TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_media_jobs_owner ON media_jobs(owner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_media_jobs_created ON media_jobs(created_at DESC);
+
     CREATE TABLE IF NOT EXISTS media_knowledge_refs (
       generation_id TEXT NOT NULL,
       knowledge_id TEXT NOT NULL,
@@ -364,4 +382,41 @@ export async function getUserById(id) {
   if (!db || !id) return null;
   const result = await db.query('SELECT id,email,display_name,created_at FROM app_users WHERE id=$1 LIMIT 1', [id]);
   return result.rows[0] || null;
+}
+
+
+export async function saveJobToDatabase(job) {
+  const db = getPool();
+  if (!db || !job?.id) return false;
+  await db.query(
+    `INSERT INTO media_jobs
+      (id, owner_user_id, type, status, created_at, started_at, completed_at, cancelled_at, attempts, retry_of, result, error)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     ON CONFLICT (id) DO UPDATE SET
+       status=EXCLUDED.status,
+       started_at=EXCLUDED.started_at,
+       completed_at=EXCLUDED.completed_at,
+       cancelled_at=EXCLUDED.cancelled_at,
+       attempts=EXCLUDED.attempts,
+       retry_of=EXCLUDED.retry_of,
+       result=EXCLUDED.result,
+       error=EXCLUDED.error`,
+    [
+      job.id, job.ownerUserId || null, job.type || 'job', job.status || 'queued',
+      job.createdAt || new Date().toISOString(), job.startedAt || null, job.completedAt || null,
+      job.cancelledAt || null, Number(job.attempts || 1), job.retryOf || null,
+      JSON.stringify(job.result ?? null), job.error || null
+    ]
+  );
+  return true;
+}
+
+export async function listJobsFromDatabase(ownerUserId = null, limit = 100) {
+  const db = getPool();
+  if (!db) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const result = ownerUserId
+    ? await db.query('SELECT * FROM media_jobs WHERE owner_user_id=$1 ORDER BY created_at DESC LIMIT $2', [ownerUserId, safeLimit])
+    : await db.query('SELECT * FROM media_jobs ORDER BY created_at DESC LIMIT $1', [safeLimit]);
+  return result.rows;
 }
