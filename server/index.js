@@ -491,6 +491,13 @@ async function executeCanonicalGeneration(input = {}) {
   throw new Error('Unknown provider.');
 }
 
+async function persistFilmProject(project) {
+  if (project) {
+    try { await saveFilmProjectToDatabase(project); } catch (error) { console.error('Film project database mirror failed:', error?.message || error); }
+  }
+  return project;
+}
+
 app.get('/api/film/projects', async (req, res) => {
   const userId = getSessionUserId(req);
   const projects = filmStore.listProjects().filter(project => !project.ownerUserId || project.ownerUserId === userId);
@@ -498,7 +505,7 @@ app.get('/api/film/projects', async (req, res) => {
 });
 
 app.post('/api/film/projects', (req, res) => {
-  try { res.status(201).json({ project: filmStore.createProject({ ...(req.body || {}), ownerUserId: getSessionUserId(req) }) }); }
+  try { const project = filmStore.createProject({ ...(req.body || {}), ownerUserId: getSessionUserId(req) }); await persistFilmProject(project); res.status(201).json({ project }); }
   catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
 });
 
@@ -520,66 +527,88 @@ app.patch('/api/film/projects/:projectId', (req, res) => {
   if (!existing || (existing.ownerUserId && existing.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
   const project = filmStore.updateProject(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(project);
+
   res.json({ project });
 });
 
 app.patch('/api/film/projects/:projectId/story', (req, res) => {
   const project = filmStore.updateStory(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(project);
+
   res.json({ project });
 });
 
 app.post('/api/film/projects/:projectId/characters', (req, res) => {
   const project = filmStore.addCharacter(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(project);
+
   res.status(201).json({ project });
 });
 
 app.patch('/api/film/projects/:projectId/characters/:characterId', (req, res) => {
   const project = filmStore.updateCharacter(req.params.projectId, req.params.characterId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or character not found.' });
+  await persistFilmProject(project);
+
   res.json({ project });
 });
 
 app.patch('/api/film/projects/:projectId/world', (req, res) => {
   const project = filmStore.updateWorld(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(project);
+
   res.json({ project });
 });
 
 app.post('/api/film/projects/:projectId/scenes', (req, res) => {
   const project = filmStore.addScene(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(project);
+
   res.status(201).json({ project });
 });
 
 app.patch('/api/film/projects/:projectId/scenes/:sceneId', (req, res) => {
   const project = filmStore.updateScene(req.params.projectId, req.params.sceneId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or scene not found.' });
+  await persistFilmProject(project);
+
   res.json({ project });
 });
 
 app.post('/api/film/projects/:projectId/shots', (req, res) => {
   const project = filmStore.addShot(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(project);
+
   res.status(201).json({ project });
 });
 
 app.patch('/api/film/projects/:projectId/shots/:shotId', (req, res) => {
   const project = filmStore.updateShot(req.params.projectId, req.params.shotId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project or shot not found.' });
+  await persistFilmProject(project);
+
   res.json({ project });
 });
 
 app.post('/api/film/projects/:projectId/scenes/:sceneId/reorder', (req, res) => {
   const project = filmStore.reorderScene(req.params.projectId, req.params.sceneId, req.body?.sequence);
   if (!project) return res.status(404).json({ error: 'Film project or scene not found.' });
+  await persistFilmProject(project);
+
   res.json({ project });
 });
 
 app.post('/api/film/projects/:projectId/shots/:shotId/reorder', (req, res) => {
   const project = filmStore.reorderShot(req.params.projectId, req.params.shotId, req.body?.sequence);
   if (!project) return res.status(404).json({ error: 'Film project or shot not found.' });
+  await persistFilmProject(project);
+
   res.json({ project });
 });
 
