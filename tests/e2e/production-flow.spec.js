@@ -32,6 +32,7 @@ test('login → generate → export production flow', async ({ page, request }) 
     body: JSON.stringify({ export: { output: '/output/e2e-export.mp4' } })
   }));
 
+  await page.context().clearCookies();
   await page.goto('/');
   await expect(page.getByText('Sign in to access your production workspace.')).toBeVisible();
   await page.getByPlaceholder('Email address').fill(email);
