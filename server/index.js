@@ -27,7 +27,7 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getGenerationFromDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase, getFilmProjectFromDatabase } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
@@ -131,21 +131,24 @@ app.use('/api', (req, res, next) => {
 
 async function requireProjectAccess(req, res, next) {
   try {
-    const project = filmStore.getProject(req.params.projectId);
-    if (!project) return res.status(404).json({ error: 'Film project not found.' });
     const userId = getSessionUserId(req);
-    if (project.ownerUserId && project.ownerUserId !== userId) {
+    if (process.env.DATABASE_URL) {
+      const canonical = await getFilmProjectFromDatabase(req.params.projectId, userId);
+      if (canonical) filmStore.replaceProjects([canonical]);
+    }
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project || (project.ownerUserId && project.ownerUserId !== userId)) {
       return res.status(404).json({ error: 'Film project not found.' });
     }
     req.filmProject = project;
     next();
   } catch (error) {
-    res.status(500).json({ error: error?.message || 'Could not verify project access.' });
+    res.status(503).json({ error: error?.message || 'Film project storage is unavailable.' });
   }
 }
 
 app.use('/api/film/projects/:projectId', requireProjectAccess);
-app.use('/api/projects/:projectId/entities', (req, res, next) => requireProjectAccess(req, res, next));
+app.use('/api/projects/:projectId/entities', requireProjectAccess);
 
 
 app.get('/api/jobs/:jobId', (req, res) => {
@@ -542,22 +545,6 @@ app.post('/api/film/projects', async (req, res) => {
   try { const project = filmStore.createProject({ ...(req.body || {}), ownerUserId: getSessionUserId(req) }); await persistFilmProject(project);
   res.status(201).json({ project }); }
   catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
-});
-
-app.use('/api/film/projects/:projectId', async (req, res, next) => {
-  try {
-    const userId = getSessionUserId(req);
-    if (process.env.DATABASE_URL) {
-      const canonical = await getFilmProjectFromDatabase(req.params.projectId, userId);
-      if (canonical) filmStore.replaceProjects([canonical]);
-    }
-    const project = filmStore.getProject(req.params.projectId);
-    if (!project || (project.ownerUserId && project.ownerUserId !== userId)) return res.status(404).json({ error: 'Film project not found.' });
-    req.filmProject = project;
-    next();
-  } catch (error) {
-    res.status(503).json({ error: error?.message || 'Film project storage is unavailable.' });
-  }
 });
 
 app.get('/api/film/projects/:projectId', async (req, res) => {
