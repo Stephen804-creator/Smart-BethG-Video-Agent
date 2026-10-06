@@ -64,3 +64,30 @@ test('relative event timing follows a moved source event', () => {
   const byId = new Map(events.map(event => [event.id, event]));
   assert.equal(resolveEventTimeMs(byId.get('event-sfx'), byId), 6980);
 });
+
+
+test('legacy records without IDs receive migration-stable IDs and valid dialogue events', () => {
+  const project = {
+    id: 'film-stable',
+    title: 'Stable Film',
+    story: { premise: 'A premise.' },
+    characters: [{ name: 'John' }],
+    world: { locations: ['Warehouse'] },
+    scenes: [{ number: 1, title: 'Warehouse', location: 'Warehouse' }],
+    shots: [{ number: 1, sceneId: null, description: 'John enters.' }],
+    dialogue: [{ text: 'Hello', startMs: 1000, endMs: 1500 }]
+  };
+
+  const first = projectToCanonicalGraph(project);
+  const second = projectToCanonicalGraph(project);
+
+  assert.equal(first.story.id, second.story.id);
+  assert.equal(first.characters[0].id, second.characters[0].id);
+  assert.equal(first.locations[0].id, second.locations[0].id);
+  assert.equal(first.scenes[0].id, second.scenes[0].id);
+  assert.equal(first.shots[0].id, second.shots[0].id);
+  assert.equal(first.dialogue[0].id, second.dialogue[0].id);
+  assert.equal(first.dialogue[0].eventId, second.dialogue[0].eventId);
+  assert.equal(first.dialogue[0].eventId, first.events.find(e => e.id === first.dialogue[0].eventId)?.id);
+  assert.equal(first.sequences[0], undefined);
+});
