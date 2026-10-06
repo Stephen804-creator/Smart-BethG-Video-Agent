@@ -170,10 +170,10 @@ export function projectToCanonicalGraph(project) {
     sequences,
     scenes,
     shots,
-    events: (project.events || []).map(event => ({\n      ...event, projectId: project.id, timeMode: event.timeMode || 'SHOT_RELATIVE',\n      timeValueMs: Number(event.timeValueMs || event.timeMs || 0), durationMs: Number(event.durationMs || 0), offsetMs: Number(event.offsetMs || 0),\n      status: event.status || 'planned'\n    })),
-    dialogue: (project.dialogue || []).map(d => ({\n      ...d, projectId: project.id, eventId: d.eventId || null, text: d.text || '',\n      startMs: d.startMs ?? null, endMs: d.endMs ?? null\n    })),
+    events: (project.events || []).map((event, i) => ({\n      ...event, id: event.id || stableId('event', project.id + ':' + i + ':' + (event.eventType || '') + ':' + (event.timeValueMs || event.timeMs || 0)), projectId: project.id, timeMode: event.timeMode || 'SHOT_RELATIVE',\n      timeValueMs: Number(event.timeValueMs || event.timeMs || 0), durationMs: Number(event.durationMs || 0), offsetMs: Number(event.offsetMs || 0),\n      status: event.status || 'planned'\n    })),
+    dialogue: (project.dialogue || []).map((d, i) => ({\n      ...d, id: d.id || stableId('dialogue', project.id + ':' + i + ':' + (d.text || '')), projectId: project.id, eventId: d.eventId || null, text: d.text || '',\n      startMs: d.startMs ?? null, endMs: d.endMs ?? null\n    })),
     continuity: (project.continuity || []).map(item => ({
-      id: item.id || uuid('continuity'),
+      id: item.id || stableId('continuity', project.id + ':' + (item.entityId || item.entity || '')),
       projectId: project.id,
       sceneId: item.sceneId || null,
       shotId: item.shotId || null,
