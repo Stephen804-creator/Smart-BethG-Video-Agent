@@ -1127,7 +1127,7 @@ function App() {
           </div>
         </div></TimelineScreen>}
 
-        {filmTab === 'takes' && <TimelineScreen><div id="tabpanel-takes" role="tabpanel" aria-labelledby="tab-takes" className="workspace-grid">
+        {filmTab === 'takes' && <TimelineScreen route={route}><div id="tabpanel-takes" role="tabpanel" aria-labelledby="tab-takes" className="workspace-grid">
           <div>
             <div className="subhead"><strong>Camera take log</strong><span className="hint">Metadata first; media can be linked when available.</span></div>
             <div className="shot-list">{filmShots.map(s => <div className="shot-row" key={s.id}><div><b>Shot {s.number}</b><span>{s.framing} · {s.movement}</span><small>{filmTakes.filter(t => t.shotId === s.id).length} takes · {s.selectedTakeId ? 'selected take recorded' : 'no selected take'}</small></div><button onClick={() => setTakeDraft({...takeDraft, shotId:s.id})}>Log take</button></div>)}</div>
@@ -1146,7 +1146,7 @@ function App() {
 
         {filmTab === 'continuity' && <div id="tabpanel-continuity" role="tabpanel" aria-labelledby="tab-continuity" className="continuity-board"><div className="subhead"><strong>Continuity board</strong><button onClick={runContinuityCheck}>Run continuity check</button></div><span className="hint">Checks the actual project state: characters, world rules, scene/shot attachment, camera continuity and logged continuity events.</span><div className="continuity-grid"><div><b>{filmProject?.characters?.length || 0}</b><small>Characters with persistent identity</small></div><div><b>{[...new Set((filmProject?.scenes||[]).flatMap(x=>x.props||[]))].length}</b><small>Tracked scene props</small></div><div><b>{(filmProject?.shots||[]).filter(x=>x.sceneId).length}/{filmProject?.shots?.length || 0}</b><small>Shots attached to scenes</small></div><div><b>{filmProject?.continuity?.length || 0}</b><small>Logged continuity events</small></div></div>{continuityReport && <div className="review-result"><strong>{continuityReport.recommendations?.length ? 'Findings' : 'No obvious continuity gaps'}</strong>{(continuityReport.recommendations || []).map((item,i)=><span key={i}>• {item}</span>)}</div>}</div>}
 
-        {filmTab === 'assets' && <LibraryScreen><LibraryScreen route={route}><div id="tabpanel-assets" role="tabpanel" aria-labelledby="tab-assets" className="asset-workspace" data-screen="library">
+        {filmTab === 'assets' && <LibraryScreen route={route}><div id="tabpanel-assets" role="tabpanel" aria-labelledby="tab-assets" className="asset-workspace" data-screen="library">
           <div className="subhead"><strong>Production media</strong><span className="hint">{filmProject.assets?.length || 0} assets</span></div>
           <div className="asset-import">
             <label>Attach upload to shot
