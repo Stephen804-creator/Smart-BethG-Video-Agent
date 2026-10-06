@@ -35,7 +35,7 @@ export function createJobQueue({
     if (!listeners) return;
     const payload = JSON.stringify(snapshot(job));
     for (const res of listeners) {
-      try { res.write(`event: job\\ndata: ${payload}\\n\\n`); } catch {}
+      try { res.write(`event: job\ndata: ${payload}\n\n`); } catch {}
     }
     if (['completed', 'failed', 'cancelled'].includes(job.status)) {
       for (const res of listeners) {
@@ -189,7 +189,7 @@ export function createJobQueue({
     const job = jobs.get(id) || terminalJobs.get(id);
     if (!job || !response) return () => {};
     if (['completed', 'failed', 'cancelled'].includes(job.status)) {
-      try { response.write(`event: job\\ndata: ${JSON.stringify(snapshot(job))}\\n\\n`); response.end(); } catch {}
+      try { response.write(`event: job\ndata: ${JSON.stringify(snapshot(job))}\n\n`); response.end(); } catch {}
       return () => {};
     }
     let listeners = subscribers.get(id);
@@ -198,7 +198,7 @@ export function createJobQueue({
       subscribers.set(id, listeners);
     }
     listeners.add(response);
-    try { response.write(`event: job\\ndata: ${JSON.stringify(snapshot(job))}\\n\\n`); } catch {}
+    try { response.write(`event: job\ndata: ${JSON.stringify(snapshot(job))}\n\n`); } catch {}
     return () => {
       const current = subscribers.get(id);
       if (!current) return;
