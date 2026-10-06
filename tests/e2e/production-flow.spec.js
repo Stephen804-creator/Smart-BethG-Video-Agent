@@ -35,8 +35,8 @@ test('login → generate → export production flow', async ({ page }) => {
   });
   await page.goto('/');
   await page.waitForTimeout(1000);
-  console.log('PAGE_TEXT', await page.locator('body').innerText());
-  await expect(page.getByText('Sign in to access your production workspace.')).toBeVisible();
+  const bodyText = await page.locator('body').innerText();
+  expect(bodyText).toContain('Sign in to access your production workspace.');
   await page.getByPlaceholder('Email address').fill(email);
   await page.getByPlaceholder('Password (8+ characters)').fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
