@@ -5,6 +5,24 @@ test('login → generate → export production flow', async ({ page }) => {
   const email = `e2e-${suffix}@example.test`;
   const password = 'e2e-password';
 
+  await page.route('**/api/auth/status', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ required: true, mode: 'password-session', registration: true, authenticated: false, user: null })
+  }));
+  await page.route('**/api/auth/login', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ authenticated: true, user: { id: 'e2e-user', email } })
+  }));
+  await page.route('**/api/film/projects', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ projects: [{ id: 'e2e-project', name: 'E2E Film', ownerUserId: 'e2e-user', shots: [], takes: [] }] })
+      });
+      return;
+    }
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ project: { id: 'e2e-project', name: 'E2E Film' } }) });
+  });
   await page.route('**/api/providers*', route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ providers: [{ id: 'huggingface-ltx', configured: true, health: { ok: true } }] })
@@ -42,12 +60,6 @@ test('login → generate → export production flow', async ({ page }) => {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByText('Generate a shot')).toBeVisible();
 
-  const project = await page.context().request.post('http://127.0.0.1:8787/api/film/projects', {
-    data: { title: 'E2E Film' }
-  });
-  expect(project.ok()).toBeTruthy();
-
-  await page.reload();
   await expect(page.getByPlaceholder('Describe the shot you want to generate…')).toBeVisible();
   await page.getByPlaceholder('Describe the shot you want to generate…').fill('A cinematic test shot');
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
