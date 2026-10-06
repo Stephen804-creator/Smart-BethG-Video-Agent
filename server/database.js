@@ -109,9 +109,6 @@ export async function initDatabase() {
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS dataset_id TEXT;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC;
     ALTER TABLE media_generations ADD COLUMN IF NOT EXISTS actual_cost_usd NUMERIC;
-    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS payload JSONB;
-    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS worker_id TEXT;
-    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS media_jobs (
       id TEXT PRIMARY KEY,
@@ -130,6 +127,10 @@ export async function initDatabase() {
       worker_id TEXT,
       lease_until TIMESTAMPTZ
     );
+
+    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS payload JSONB;
+    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS worker_id TEXT;
+    ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
 
     CREATE INDEX IF NOT EXISTS idx_media_jobs_owner ON media_jobs(owner_user_id);
     CREATE INDEX IF NOT EXISTS idx_media_jobs_created ON media_jobs(created_at DESC);
