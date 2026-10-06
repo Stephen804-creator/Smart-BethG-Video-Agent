@@ -15,16 +15,21 @@ function sleep(ms, signal) {
   });
 }
 
+function replaceLiteral(value, token, replacement) {
+  return String(value).split(token).join(String(replacement ?? ''));
+}
+
 function replacePlaceholders(value, task) {
   if (typeof value === 'string') {
-    return value
-      .replaceAll('{{prompt}}', task.prompt)
-      .replaceAll('{{negative_prompt}}', task.negativePrompt)
-      .replaceAll('{{seed}}', String(task.metadata.seed ?? Math.floor(Math.random() * 2147483647)))
-      .replaceAll('{{width}}', String(task.requirements.width))
-      .replaceAll('{{height}}', String(task.requirements.height))
-      .replaceAll('{{duration}}', String(task.requirements.duration))
-      .replaceAll('{{frames}}', String(Math.max(1, Math.round(task.requirements.duration * 16))));
+    return replaceLiteral(replaceLiteral(replaceLiteral(replaceLiteral(
+      replaceLiteral(replaceLiteral(replaceLiteral(value,
+        '{{prompt}}', task.prompt),
+        '{{negative_prompt}}', task.negativePrompt),
+        '{{seed}}', String(task.metadata.seed ?? Math.floor(Math.random() * 2147483647))),
+        '{{width}}', String(task.requirements.width)),
+        '{{height}}', String(task.requirements.height)),
+        '{{duration}}', String(task.requirements.duration)),
+        '{{frames}}', String(Math.max(1, Math.round(task.requirements.duration * 16))));
   }
 
   if (Array.isArray(value)) return value.map(item => replacePlaceholders(item, task));
