@@ -153,6 +153,27 @@ app.get('/api/jobs/:jobId', (req, res) => {
   if (!job) return res.status(404).json({ error: 'Job not found.' });
   res.json({ job });
 });
+app.get('/api/jobs/:jobId/events', (req, res) => {
+  const job = generationQueue.ownedGet(req.params.jobId, getSessionUserId(req));
+  if (!job) return res.status(404).json({ error: 'Job not found.' });
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  const cleanup = generationQueue.subscribe(req.params.jobId, res);
+  const heartbeat = setInterval(() => {
+    try { res.write(': keep-alive\n\n'); } catch {}
+  }, 20_000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    cleanup();
+  });
+});
+
 app.get('/api/jobs/:jobId/cost', (req, res) => {
   const job = generationQueue.ownedGet(req.params.jobId, getSessionUserId(req));
   if (!job) return res.status(404).json({ error: 'Job not found.' });
