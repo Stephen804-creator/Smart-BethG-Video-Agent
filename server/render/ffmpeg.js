@@ -111,6 +111,7 @@ export async function renderTimeline({ clips = [], outputDir }) {
   if (!Array.isArray(clips) || !clips.length) throw new Error('A timeline requires at least one clip.');
   fs.mkdirSync(outputDir, { recursive: true });
   const rendered = [];
+  const normalized = [];
   for (const clip of clips) {
     const item = await renderShot({
       inputPath: clip.inputPath,
@@ -120,15 +121,32 @@ export async function renderTimeline({ clips = [], outputDir }) {
       audioMix: clip.audioMix || {}
     });
     rendered.push(item);
+
+    const normalizedPath = path.join(outputDir, 'timeline-normalized-' + crypto.randomUUID() + '.mp4');
+    await run('ffmpeg', [
+      '-y', '-i', item.outputPath,
+      '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+      '-filter_complex',
+      '[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v]',
+      '-map', '[v]', '-map', '0:a?', '-map', '1:a',
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+      '-shortest', normalizedPath
+    ]);
+    normalized.push(normalizedPath);
   }
+
   const listFile = path.join(outputDir, 'timeline-' + crypto.randomUUID() + '.txt');
-  fs.writeFileSync(listFile, rendered.map(item => "file '" + item.outputPath.replace(/'/g, "'\\''") + "'").join('\n'));
+  fs.writeFileSync(listFile, normalized.map(file => "file '" + file.replace(/'/g, "'\\''") + "'").join('\n'));
   const filename = 'export-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8) + '.mp4';
   const outputPath = path.join(outputDir, filename);
   try {
     await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', outputPath]);
   } finally {
     try { fs.unlinkSync(listFile); } catch {}
+    for (const file of normalized) {
+      try { fs.unlinkSync(file); } catch {}
+    }
   }
   return {
     filename,
