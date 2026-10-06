@@ -6,14 +6,14 @@ export default defineConfig({
   fullyParallel: false,
   reporter: 'line',
   use: {
-    baseURL: 'http://127.0.0.1:8787',
+    baseURL: 'http://127.0.0.1:5173',
     trace: 'retain-on-failure',
     serviceWorkers: 'block',
     ...devices['Desktop Chrome']
   },
   webServer: {
-    command: 'npm run build && node server/index.js',
-    url: 'http://127.0.0.1:8787',
+    command: 'npm run server & npm run client -- --host 127.0.0.1',
+    url: 'http://127.0.0.1:5173',
     reuseExistingServer: false,
     timeout: 120_000
   }
