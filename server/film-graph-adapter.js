@@ -249,13 +249,63 @@ export function projectToCanonicalGraph(project) {
       projectId: project.id,
       assetType: asset.assetType || asset.sourceType || 'media'
     })),
-    takes: (project.takes || []).map(take => ({
+    takes: (project.takes || []).map((take, i) => ({
       ...take,
+      id: take.id || stableId('take', project.id + ':' + i + ':' + (take.shotId || '') + ':' + (take.takeNumber || 1)),
       projectId: project.id,
       shotId: take.shotId || null,
       assetId: take.assetId || null,
       takeNumber: Number(take.takeNumber || 1),
       sourceType: take.sourceType || 'camera'
+    })),
+    rightsProfiles: (project.rightsProfiles || []).map((profile, i) => ({
+      ...profile,
+      id: profile.id || stableId('rights', project.id + ':' + i + ':' + (profile.source || profile.license || '')),
+      projectId: project.id
+    })),
+    storyboardPanels: (project.storyboardPanels || []).map((panel, i) => ({
+      ...panel,
+      id: panel.id || stableId('storyboard', project.id + ':' + i + ':' + (panel.shotId || '')),
+      projectId: project.id
+    })),
+    approvals: (project.approvals || []).map((approval, i) => ({
+      ...approval,
+      id: approval.id || stableId('approval', project.id + ':' + i + ':' + (approval.entityId || '') + ':' + (approval.state || '')),
+      projectId: project.id
+    })),
+    versionRecords: (project.versionRecords || []).map((record, i) => ({
+      ...record,
+      id: record.id || stableId('version', project.id + ':' + i + ':' + (record.entityId || '') + ':' + (record.version || 1)),
+      projectId: project.id
+    })),
+    timelines: (project.timelines || []).map((timeline, i) => ({
+      ...timeline,
+      id: timeline.id || stableId('timeline', project.id + ':' + i + ':' + (timeline.version || 1)),
+      projectId: project.id,
+      clips: (timeline.clips || []).map((clip, j) => ({
+        ...clip,
+        id: clip.id || stableId('timeline-clip', project.id + ':' + i + ':' + j + ':' + (clip.sourceId || ''))
+      }))
+    })),
+    audioTracks: (project.audioTracks || []).map((track, i) => ({
+      ...track,
+      id: track.id || stableId('audio-track', project.id + ':' + i + ':' + (track.name || '')),
+      projectId: project.id
+    })),
+    audioClips: (project.audioClips || []).map((clip, i) => ({
+      ...clip,
+      id: clip.id || stableId('audio-clip', project.id + ':' + i + ':' + (clip.assetId || '') + ':' + (clip.startMs || 0)),
+      projectId: project.id
+    })),
+    cameraSources: (project.cameraSources || []).map((source, i) => ({
+      ...source,
+      id: source.id || stableId('camera-source', project.id + ':' + i + ':' + (source.uri || source.deviceName || '')),
+      projectId: project.id
+    })),
+    cameraClips: (project.cameraClips || []).map((clip, i) => ({
+      ...clip,
+      id: clip.id || stableId('camera-clip', project.id + ':' + i + ':' + (clip.sourceId || '') + ':' + (clip.inMs || 0)),
+      projectId: project.id
     }))
   };
 }
