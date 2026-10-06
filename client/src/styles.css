@@ -2166,3 +2166,22 @@ html[data-density="compact"] {
 .generation-overlay .secondary-button {
   flex: 0 0 auto;
 }
+
+html[data-theme="light"] .panel,
+html[data-theme="light"] .film-workspace,
+html[data-theme="light"] .timeline-panel,
+html[data-theme="light"] .workspace-tool-panel,
+html[data-theme="light"] .production-tool-panel,
+html[data-theme="light"] .story-column,
+html[data-theme="light"] .asset-workspace {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+html[data-theme="light"] textarea,
+html[data-theme="light"] input,
+html[data-theme="light"] select {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border);
+}
