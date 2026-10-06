@@ -34,6 +34,8 @@ test('login → generate → export production flow', async ({ page, request }) 
 
   await page.context().clearCookies();
   await page.goto('/');
+  await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }));
+  await page.reload();
   await expect(page.getByText('Sign in to access your production workspace.')).toBeVisible();
   await page.getByPlaceholder('Email address').fill(email);
   await page.getByPlaceholder('Password (8+ characters)').fill(password);
