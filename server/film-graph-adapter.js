@@ -63,7 +63,8 @@ function mapScene(projectId, scene, index, locationId = null) {
     emotionalState: { mood: scene.mood || '' },
     visualDirection: { blocking: scene.blocking || '', weather: scene.weather || '' },
     audioDirection: { audio: scene.audio || '' },
-    status: scene.status || 'planned',\n    orderIndex: Number(scene.orderIndex || index + 1)
+    status: scene.status || 'planned',
+    orderIndex: Number(scene.orderIndex || index + 1)
   };
 }
 
@@ -88,7 +89,8 @@ function mapShot(projectId, shot, index) {
     lighting: json(shot.lighting, {}),
     visualStyle: json(shot.visualStyle, {}),
     duration: Number(shot.duration || 0) || null,
-    fps: Number(shot.fps || 0) || null,\n    orderIndex: Number(shot.orderIndex || index + 1)
+    fps: Number(shot.fps || 0) || null,
+    orderIndex: Number(shot.orderIndex || index + 1)
   };
 }
 
@@ -195,7 +197,11 @@ export function projectToCanonicalGraph(project) {
     story: mapStory(project),
     characters,
     locations,
-    props: (project.props || project.world?.props || []).map((prop, i) => ({\n      id: prop.id || stableId('prop', project.id + ':' + i + ':' + (prop.name || '')), projectId: project.id, name: prop.name || 'Prop', description: prop.description || '',\n      appearance: json(prop.appearance, {}), ownerCharacterId: prop.ownerCharacterId || null,\n      references: json(prop.references, []), continuityConstraints: json(prop.continuityConstraints, {})\n    })),
+    props: (project.props || project.world?.props || []).map((prop, i) => ({
+      id: prop.id || stableId('prop', project.id + ':' + i + ':' + (prop.name || '')), projectId: project.id, name: prop.name || 'Prop', description: prop.description || '',
+      appearance: json(prop.appearance, {}), ownerCharacterId: prop.ownerCharacterId || null,
+      references: json(prop.references, []), continuityConstraints: json(prop.continuityConstraints, {})
+    })),
     styles: [{
       projectId: project.id,
       visual: {},
@@ -219,8 +225,15 @@ export function projectToCanonicalGraph(project) {
     sequences,
     scenes,
     shots,
-    events: (project.events || []).map((event, i) => ({\n      ...event, id: event.id || stableId('event', project.id + ':' + i + ':' + (event.eventType || '') + ':' + (event.timeValueMs || event.timeMs || 0)), projectId: project.id, timeMode: event.timeMode || 'SHOT_RELATIVE',\n      timeValueMs: Number(event.timeValueMs || event.timeMs || 0), durationMs: Number(event.durationMs || 0), offsetMs: Number(event.offsetMs || 0),\n      status: event.status || 'planned'\n    })),
-    dialogue: (project.dialogue || []).map((d, i) => ({\n      ...d, id: d.id || stableId('dialogue', project.id + ':' + i + ':' + (d.text || '')), projectId: project.id, eventId: d.eventId || null, text: d.text || '',\n      startMs: d.startMs ?? null, endMs: d.endMs ?? null\n    })),
+    events: (project.events || []).map((event, i) => ({
+      ...event, id: event.id || stableId('event', project.id + ':' + i + ':' + (event.eventType || '') + ':' + (event.timeValueMs || event.timeMs || 0)), projectId: project.id, timeMode: event.timeMode || 'SHOT_RELATIVE',
+      timeValueMs: Number(event.timeValueMs || event.timeMs || 0), durationMs: Number(event.durationMs || 0), offsetMs: Number(event.offsetMs || 0),
+      status: event.status || 'planned'
+    })),
+    dialogue: (project.dialogue || []).map((d, i) => ({
+      ...d, id: d.id || stableId('dialogue', project.id + ':' + i + ':' + (d.text || '')), projectId: project.id, eventId: d.eventId || null, text: d.text || '',
+      startMs: d.startMs ?? null, endMs: d.endMs ?? null
+    })),
     continuity: (project.continuity || []).map(item => ({
       id: item.id || stableId('continuity', project.id + ':' + (item.entityId || item.entity || '')),
       projectId: project.id,
