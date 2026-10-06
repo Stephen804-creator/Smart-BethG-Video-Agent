@@ -6,7 +6,8 @@
  * stable IDs instead of creating duplicate production entities.
  */
 
-const j = (value, fallback) => JSON.stringify(value == null ? fallback : value);\nconst ms = (value) => Math.max(0, Number(value || 0));
+const j = (value, fallback) => JSON.stringify(value == null ? fallback : value);
+const ms = (value) => Math.max(0, Number(value || 0));
 
 async function upsert(db, sql, values) {
   await db.query(sql, values);
