@@ -12,6 +12,7 @@ export function createJobQueue({
   const terminalJobs = new Map();
   const terminalLimit = 1000;
   const pending = [];
+  const subscribers = new Map();
   let active = 0;
   let draining = false;
 
@@ -29,8 +30,24 @@ export function createJobQueue({
     return { ...snapshot(job), payload: job.payload ?? null };
   }
 
+  function emit(job) {
+    const listeners = subscribers.get(job.id);
+    if (!listeners) return;
+    const payload = JSON.stringify(snapshot(job));
+    for (const res of listeners) {
+      try { res.write(`event: job\\ndata: ${payload}\\n\\n`); } catch {}
+    }
+    if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+      for (const res of listeners) {
+        try { res.end(); } catch {}
+      }
+      subscribers.delete(job.id);
+    }
+  }
+
   function persist(job) {
     try { if (typeof onChange === 'function') onChange(persisted(job)); } catch {}
+    emit(job);
   }
 
   function rememberTerminal(job) {
@@ -168,6 +185,28 @@ export function createJobQueue({
 
   function get(id) { const job = jobs.get(id) || terminalJobs.get(id); return job ? snapshot(job) : null; }
 
+  function subscribe(id, response) {
+    const job = jobs.get(id) || terminalJobs.get(id);
+    if (!job || !response) return () => {};
+    if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+      try { response.write(`event: job\\ndata: ${JSON.stringify(snapshot(job))}\\n\\n`); response.end(); } catch {}
+      return () => {};
+    }
+    let listeners = subscribers.get(id);
+    if (!listeners) {
+      listeners = new Set();
+      subscribers.set(id, listeners);
+    }
+    listeners.add(response);
+    try { response.write(`event: job\\ndata: ${JSON.stringify(snapshot(job))}\\n\\n`); } catch {}
+    return () => {
+      const current = subscribers.get(id);
+      if (!current) return;
+      current.delete(response);
+      if (!current.size) subscribers.delete(id);
+    };
+  }
+
   function cancel(id) {
     const job = jobs.get(id) || terminalJobs.get(id);
     if (!job) return null;
@@ -215,5 +254,5 @@ export function createJobQueue({
     return retry(id);
   }
 
-  return { enqueue, recover, get, cancel, retry, ownedGet, ownedCancel, ownedRetry, size: () => pending.length + active };
+  return { enqueue, recover, get, subscribe, cancel, retry, ownedGet, ownedCancel, ownedRetry, size: () => pending.length + active };
 }
