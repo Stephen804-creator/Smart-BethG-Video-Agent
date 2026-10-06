@@ -30,7 +30,7 @@ jobs:
       DATABASE_SSL: 'false'
       APP_SESSION_SECRET: ci-test-session-secret
       NODE_ENV: test
-      APP_AUTH_PASSWORD: unused-in-db-mode
+      APP_AUTH_PASSWORD: e2e-password
     steps:
       - name: Checkout
         uses: actions/checkout@v4
