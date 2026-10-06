@@ -28,6 +28,8 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgresql://cinematic:cinematic@127.0.0.1:5432/cinematic_test
+      DATABASE_SSL: 'false'
+      APP_SESSION_SECRET: ci-test-session-secret
       NODE_ENV: test
       APP_AUTH_PASSWORD: unused-in-db-mode
     steps:
