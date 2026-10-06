@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { Icon } from './icons.jsx';
+import { GenerateScreen, ProjectScreen, TimelineScreen, LibraryScreen } from './screens/index.jsx';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -70,11 +71,14 @@ function App() {
     '/': 'generator',
     '/generator': 'generator',
     '/projects': 'projects',
+    '/project': 'projects',
     '/story': 'story',
     '/shots': 'shots',
+    '/timeline': 'shots',
     '/takes': 'takes',
     '/continuity': 'continuity',
     '/assets': 'assets',
+    '/library': 'assets',
     '/assistant': 'assistant',
     '/settings': 'settings'
   };
@@ -98,6 +102,21 @@ function App() {
       if (tab) setFilmTab(tab);
       if (view === 'projects') setFilmTab('shots');
     }
+  }
+
+  function handleTabKeyDown(event, tabIds, currentId, setTab) {
+    const index = tabIds.indexOf(currentId);
+    if (index < 0) return;
+    let nextIndex = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % tabIds.length;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index - 1 + tabIds.length) % tabIds.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = tabIds.length - 1;
+    if (nextIndex == null) return;
+    event.preventDefault();
+    const next = tabIds[nextIndex];
+    setTab(next);
+    requestAnimationFrame(() => document.getElementById('tab-' + next)?.focus());
   }
 
   function navigate(path) {
@@ -210,6 +229,46 @@ function App() {
     }
   }
 
+  async function waitForJob(jobId, onJob) {
+    const response = await apiFetch('/jobs/' + jobId + '/events');
+    if (!response.ok || !response.body) {
+      const fallback = await apiFetch('/jobs/' + jobId);
+      const state = await fallback.json();
+      if (!fallback.ok) throw new Error(state.error || 'Could not read generation job.');
+      onJob(state.job);
+      return state.job;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalJob = null;
+
+    const consume = (chunk) => {
+      buffer += decoder.decode(chunk, { stream: true });
+      const events = buffer.split(/\\n\\n/);
+      buffer = events.pop() || '';
+      for (const event of events) {
+        const dataLine = event.split('\\n').find(line => line.startsWith('data: '));
+        if (!dataLine) continue;
+        try {
+          const job = JSON.parse(dataLine.slice(6));
+          finalJob = job;
+          onJob(job);
+        } catch {}
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      consume(value);
+      if (finalJob && ['completed', 'failed', 'cancelled'].includes(finalJob.status)) break;
+    }
+    if (!finalJob) throw new Error('Job progress stream ended before a status was received.');
+    return finalJob;
+  }
+
   async function retryGeneration() {
     if (!retryJobId || generating) return;
     try {
@@ -221,16 +280,13 @@ function App() {
       setActiveJobId(data.job.id);
       setRetryJobId(null);
       notify('Generation retry queued');
-      for (;;) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        const poll = await apiFetch('/jobs/' + data.job.id);
-        const state = await poll.json();
-        if (!poll.ok) throw new Error(state.error || 'Could not read retry job.');
-        if (state.job?.status === 'completed') { setResult(state.job.result); setStatus('Completed'); notify('Retry completed', 'success'); break; }
-        if (state.job?.status === 'failed') { setRetryJobId(data.job.id); throw new Error(state.job.error || 'Retry failed.'); }
-        if (state.job?.status === 'cancelled') { setStatus('Retry cancelled'); break; }
-        setStatus(state.job?.status === 'running' ? 'Generating…' : 'Queued…');
-      }
+      const finalJob = await waitForJob(data.job.id, job => {
+        if (job.status === 'running') { setStatus('Generating…'); setProgress(55); }
+        else if (job.status === 'queued') { setStatus('Queued…'); setProgress(25); }
+      });
+      if (finalJob.status === 'completed') { setResult(finalJob.result); setStatus('Completed'); setProgress(100); notify('Retry completed', 'success'); }
+      else if (finalJob.status === 'failed') { setRetryJobId(data.job.id); throw new Error(finalJob.error || 'Retry failed.'); }
+      else if (finalJob.status === 'cancelled') setStatus('Retry cancelled');
     } catch (e) {
       setStatus(e.message || 'Retry failed');
       notify(e.message || 'Retry failed', 'error');
@@ -284,24 +340,21 @@ function App() {
       setRetryJobId(null);
       setJobCost(null);
 
-      for (;;) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        const poll = await apiFetch('/jobs/' + jobId);
-        const data = await poll.json();
-        if (!poll.ok) throw new Error(data.error || 'Could not read generation job.');
+      const finalJob = await waitForJob(jobId, job => {
+        if (job.status === 'running') { setStatus('Generating…'); setProgress(55); }
+        else if (job.status === 'queued') { setStatus('Queued…'); setProgress(25); }
+      });
+      if (finalJob.status === 'cancelled') { setStatus('Generation cancelled'); notify('Generation cancelled'); }
+      else if (finalJob.status === 'completed') {
+        setResult(finalJob.result);
+        setStatus('Completed');
+        setProgress(100);
         const costResponse = await apiFetch('/jobs/' + jobId + '/cost');
         if (costResponse.ok) setJobCost(await costResponse.json());
-        if (data.job?.status === 'cancelled') { setStatus('Generation cancelled'); notify('Generation cancelled'); break; }
-        if (data.job?.status === 'completed') {
-          setResult(data.job.result);
-          setStatus('Completed');
-          setProgress(100);
-          notify('Shot generated successfully', 'success');
-          break;
-        }
-        if (data.job?.status === 'failed') { setRetryJobId(jobId); throw new Error(data.job.error || 'Generation failed.'); }
-        if (data.job?.status === 'running') { setStatus('Generating…'); setProgress(55); }
-        else { setStatus('Queued…'); setProgress(25); }
+        notify('Shot generated successfully', 'success');
+      } else if (finalJob.status === 'failed') {
+        setRetryJobId(jobId);
+        throw new Error(finalJob.error || 'Generation failed.');
       }
     } catch (e) {
       setStatus(e.message || 'Generation failed');
@@ -760,13 +813,13 @@ function App() {
       </div>
       {!filmProject ? <div className="workspace-empty"><strong>Start a real production project</strong><span>Create a project to get scenes, a shot list, take logging and continuity tracking.</span></div> :
       <div className="workspace-body">
-        <div className="workspace-tabs" role="tablist" aria-label="Production workspace">
-          <button role="tab" aria-selected={filmTab === 'story'} className={filmTab === 'story' ? 'active' : ''} onClick={() => { setFilmTab('story'); syncStoryDraft(filmProject); }}>Story & World</button>
-          <button role="tab" aria-selected={filmTab === 'shots'} className={filmTab === 'shots' ? 'active' : ''} onClick={() => setFilmTab('shots')}>Shot List</button>
-          <button role="tab" aria-selected={filmTab === 'takes'} className={filmTab === 'takes' ? 'active' : ''} onClick={() => setFilmTab('takes')}>Camera / Takes</button>
-          <button role="tab" aria-selected={filmTab === 'continuity'} className={filmTab === 'continuity' ? 'active' : ''} onClick={() => setFilmTab('continuity')}>Continuity</button>
-          <button role="tab" aria-selected={filmTab === 'assets'} className={filmTab === 'assets' ? 'active' : ''} onClick={() => setFilmTab('assets')}>Media Assets</button>
-          <button role="tab" aria-selected={filmTab === 'assistant'} className={filmTab === 'assistant' ? 'active' : ''} onClick={() => setFilmTab('assistant')}>AI Help</button>
+        <div className="workspace-tabs" role="tablist" aria-label="Production workspace" aria-orientation="horizontal">
+          <button id="tab-story" role="tab" tabIndex={filmTab === 'story' ? 0 : -1} aria-controls="tabpanel-story" aria-selected={filmTab === 'story'} className={filmTab === 'story' ? 'active' : ''} onKeyDown={e => handleTabKeyDown(e,['story','shots','takes','continuity','assets','assistant'],filmTab,setFilmTab)} onClick={() => { setFilmTab('story'); syncStoryDraft(filmProject); }}>Story & World</button>
+          <button id="tab-shots" role="tab" tabIndex={filmTab === 'shots' ? 0 : -1} aria-controls="tabpanel-shots" aria-selected={filmTab === 'shots'} className={filmTab === 'shots' ? 'active' : ''} onKeyDown={e => handleTabKeyDown(e,['story','shots','takes','continuity','assets','assistant'],filmTab,setFilmTab)} onClick={() => setFilmTab('shots')}>Shot List</button>
+          <button id="tab-takes" role="tab" tabIndex={filmTab === 'takes' ? 0 : -1} aria-controls="tabpanel-takes" aria-selected={filmTab === 'takes'} className={filmTab === 'takes' ? 'active' : ''} onKeyDown={e => handleTabKeyDown(e,['story','shots','takes','continuity','assets','assistant'],filmTab,setFilmTab)} onClick={() => setFilmTab('takes')}>Camera / Takes</button>
+          <button id="tab-continuity" role="tab" tabIndex={filmTab === 'continuity' ? 0 : -1} aria-controls="tabpanel-continuity" aria-selected={filmTab === 'continuity'} className={filmTab === 'continuity' ? 'active' : ''} onKeyDown={e => handleTabKeyDown(e,['story','shots','takes','continuity','assets','assistant'],filmTab,setFilmTab)} onClick={() => setFilmTab('continuity')}>Continuity</button>
+          <button id="tab-assets" role="tab" tabIndex={filmTab === 'assets' ? 0 : -1} aria-controls="tabpanel-assets" aria-selected={filmTab === 'assets'} className={filmTab === 'assets' ? 'active' : ''} onKeyDown={e => handleTabKeyDown(e,['story','shots','takes','continuity','assets','assistant'],filmTab,setFilmTab)} onClick={() => setFilmTab('assets')}>Media Assets</button>
+          <button id="tab-assistant" role="tab" tabIndex={filmTab === 'assistant' ? 0 : -1} aria-controls="tabpanel-assistant" aria-selected={filmTab === 'assistant'} className={filmTab === 'assistant' ? 'active' : ''} onKeyDown={e => handleTabKeyDown(e,['story','shots','takes','continuity','assets','assistant'],filmTab,setFilmTab)} onClick={() => setFilmTab('assistant')}>AI Help</button>
         </div>
 
         {(filmTab === 'shots' || filmTab === 'takes' || filmTab === 'assets') && <div className="production-tool-dock">
@@ -774,7 +827,7 @@ function App() {
             <div><strong>Production tools</strong><span>Open only the tool group you need for the current shot or take.</span></div>
             <button className="tool-collapse" onClick={() => setProductionTool('')}>Collapse</button>
           </div>
-          <div className="production-tool-icons" role="tablist" aria-label="Production tools">
+          <div className="production-tool-icons" role="tablist" aria-label="Production tools" aria-orientation="horizontal">
             {[
               ['shot','Clapperboard','Shot'],
               ['camera','Camera','Camera'],
@@ -783,7 +836,7 @@ function App() {
               ['audio','Volume','Audio'],
               ['layers','Layers','Layers'],
               ['timing','Timer','Timing']
-            ].map(([id,icon,label]) => <button key={id} role="tab" aria-selected={productionTool === id} className={productionTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onClick={() => setProductionTool(productionTool === id ? '' : id)} title={label + ' tools'}><span><Icon name={icon} size={16}/></span><small>{label}</small></button>)}
+            ].map(([id,icon,label]) => <button key={id} id={'tool-tab-' + id} role="tab" tabIndex={productionTool === id ? 0 : -1} aria-selected={productionTool === id} className={productionTool === id ? 'production-tool-icon active' : 'production-tool-icon'} onKeyDown={e => handleTabKeyDown(e,['shot','camera','edit','effects','audio','layers','timing'],productionTool || 'shot',setProductionTool)} onClick={() => setProductionTool(productionTool === id ? '' : id)} title={label + ' tools'}><span><Icon name={icon} size={16}/></span><small>{label}</small></button>)}
           </div>
 
           {productionTool === 'shot' && <div className="production-tool-panel">
@@ -965,7 +1018,7 @@ function App() {
           {filmTab === 'assistant' && workspaceTool === 'next-step' && <div className="workspace-tool-panel"><div className="tool-panel-head"><strong>Next production step</strong><span>Let the existing production review identify what is missing.</span></div><div className="tool-actions"><button onClick={() => reviewFilmProject('next-step')}>Find next action</button></div></div>}
         </div>
 
-        {filmTab === 'story' && <div className="story-workspace">
+        {filmTab === 'story' && <div id="tabpanel-story" role="tabpanel" aria-labelledby="tab-story" className="story-workspace">
           <div className="story-column">
             <div className="subhead"><strong>Story Bible</strong><span className="hint">Persistent creative rules for this project.</span></div>
             <label>Premise<textarea rows="4" value={storyDraft.premise} onChange={e => setStoryDraft({...storyDraft,premise:e.target.value})} placeholder="What is the core story?"/></label>
@@ -1002,7 +1055,7 @@ function App() {
           </div>
         </div>}
 
-        {filmTab === 'shots' && <div className="workspace-grid">
+        {filmTab === 'shots' && <div id="tabpanel-shots" role="tabpanel" aria-labelledby="tab-shots" className="workspace-grid">
           <div>
             <div className="subhead"><strong>Scene builder</strong><button onClick={addFilmScene}>+ Scene</button></div>
             <div className="scene-list">{(filmProject.scenes || []).map(s => <button className={selectedSceneId === s.id ? 'scene-card active' : 'scene-card'} key={s.id} onClick={() => { setSelectedSceneId(s.id); syncSceneDraft(s); }}><b>Scene {s.number}</b><span>{s.title}</span><small>{s.dramaticBeat || s.description || 'No dramatic beat yet.'}</small></button>)}{!filmProject.scenes?.length && <span className="hint">No scenes yet.</span>}</div>
@@ -1067,7 +1120,7 @@ function App() {
           </div>
         </div>}
 
-        {filmTab === 'takes' && <div className="workspace-grid">
+        {filmTab === 'takes' && <div id="tabpanel-takes" role="tabpanel" aria-labelledby="tab-takes" className="workspace-grid">
           <div>
             <div className="subhead"><strong>Camera take log</strong><span className="hint">Metadata first; media can be linked when available.</span></div>
             <div className="shot-list">{filmShots.map(s => <div className="shot-row" key={s.id}><div><b>Shot {s.number}</b><span>{s.framing} · {s.movement}</span><small>{filmTakes.filter(t => t.shotId === s.id).length} takes · {s.selectedTakeId ? 'selected take recorded' : 'no selected take'}</small></div><button onClick={() => setTakeDraft({...takeDraft, shotId:s.id})}>Log take</button></div>)}</div>
@@ -1084,9 +1137,9 @@ function App() {
           <div className="take-history">{filmTakes.map(t => <div className="take-card" key={t.id}><b>Take {t.takeNumber}</b><span>{t.camera || 'Camera TBD'} · {t.fps}fps · ISO {t.iso || '—'} · {t.shutter || '—'}</span><small>{t.mediaUri || 'No media linked yet.'}</small><button onClick={() => selectFilmTake(t.shotId,t.id)}>{t.selected ? '✓ Selected take' : 'Select as best take'}</button></div>)}</div>
         </div>}
 
-        {filmTab === 'continuity' && <div className="continuity-board"><div className="subhead"><strong>Continuity board</strong><button onClick={runContinuityCheck}>Run continuity check</button></div><span className="hint">Checks the actual project state: characters, world rules, scene/shot attachment, camera continuity and logged continuity events.</span><div className="continuity-grid"><div><b>{filmProject?.characters?.length || 0}</b><small>Characters with persistent identity</small></div><div><b>{[...new Set((filmProject?.scenes||[]).flatMap(x=>x.props||[]))].length}</b><small>Tracked scene props</small></div><div><b>{(filmProject?.shots||[]).filter(x=>x.sceneId).length}/{filmProject?.shots?.length || 0}</b><small>Shots attached to scenes</small></div><div><b>{filmProject?.continuity?.length || 0}</b><small>Logged continuity events</small></div></div>{continuityReport && <div className="review-result"><strong>{continuityReport.recommendations?.length ? 'Findings' : 'No obvious continuity gaps'}</strong>{(continuityReport.recommendations || []).map((item,i)=><span key={i}>• {item}</span>)}</div>}</div>}
+        {filmTab === 'continuity' && <div id="tabpanel-continuity" role="tabpanel" aria-labelledby="tab-continuity" className="continuity-board"><div className="subhead"><strong>Continuity board</strong><button onClick={runContinuityCheck}>Run continuity check</button></div><span className="hint">Checks the actual project state: characters, world rules, scene/shot attachment, camera continuity and logged continuity events.</span><div className="continuity-grid"><div><b>{filmProject?.characters?.length || 0}</b><small>Characters with persistent identity</small></div><div><b>{[...new Set((filmProject?.scenes||[]).flatMap(x=>x.props||[]))].length}</b><small>Tracked scene props</small></div><div><b>{(filmProject?.shots||[]).filter(x=>x.sceneId).length}/{filmProject?.shots?.length || 0}</b><small>Shots attached to scenes</small></div><div><b>{filmProject?.continuity?.length || 0}</b><small>Logged continuity events</small></div></div>{continuityReport && <div className="review-result"><strong>{continuityReport.recommendations?.length ? 'Findings' : 'No obvious continuity gaps'}</strong>{(continuityReport.recommendations || []).map((item,i)=><span key={i}>• {item}</span>)}</div>}</div>}
 
-        {filmTab === 'assets' && <div className="asset-workspace">
+        {filmTab === 'assets' && <div id="tabpanel-assets" role="tabpanel" aria-labelledby="tab-assets" className="asset-workspace">
           <div className="subhead"><strong>Production media</strong><span className="hint">{filmProject.assets?.length || 0} assets</span></div>
           <div className="asset-import">
             <label>Attach upload to shot
@@ -1122,7 +1175,7 @@ function App() {
           </div>
         </div>}
 
-        {filmTab === 'assistant' && <div className="assistant-workspace"><strong>AI production assistant</strong><p>The assistant reviews the actual project state before recommending the next production step.</p><button onClick={reviewFilmProject}>Analyze this production</button>{filmReview && <div className="review-result"><b>{filmReview.summary.shots} shots · {filmReview.summary.takes} takes</b>{filmReview.recommendations.map((item,i)=><span key={i}>• {item}</span>)}<strong>Next: {filmReview.next_action}</strong></div>}<div className="checklist"><span>✓ Check establishing, action and reaction coverage.</span><span>✓ Track characters, props, wardrobe and screen direction.</span><span>✓ Compare camera, lens, FPS, shutter and ISO across takes.</span><span>✓ Mix real camera footage with AI-generated shots when needed.</span></div></div>}
+        {filmTab === 'assistant' && <div id="tabpanel-assistant" role="tabpanel" aria-labelledby="tab-assistant" className="assistant-workspace"><strong>AI production assistant</strong><p>The assistant reviews the actual project state before recommending the next production step.</p><button onClick={reviewFilmProject}>Analyze this production</button>{filmReview && <div className="review-result"><b>{filmReview.summary.shots} shots · {filmReview.summary.takes} takes</b>{filmReview.recommendations.map((item,i)=><span key={i}>• {item}</span>)}<strong>Next: {filmReview.next_action}</strong></div>}<div className="checklist"><span>✓ Check establishing, action and reaction coverage.</span><span>✓ Track characters, props, wardrobe and screen direction.</span><span>✓ Compare camera, lens, FPS, shutter and ISO across takes.</span><span>✓ Mix real camera footage with AI-generated shots when needed.</span></div></div>}
       </div>}
     </section>}
 
