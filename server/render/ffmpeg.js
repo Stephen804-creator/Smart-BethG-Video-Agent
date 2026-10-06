@@ -130,50 +130,40 @@ export async function renderTimeline({ clips = [], outputDir, keepIntermediates 
       const normalizedPath = path.join(outputDir, 'timeline-normalized-' + crypto.randomUUID() + '.mp4');
       const videoFilter = 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p';
 
-      // Every timeline segment gets the same video/audio contract before assembly.
-      // This prevents concat failures caused by mixed resolution, FPS or audio streams.
+      // First normalize the video and preserve source audio when it exists.
       await run('ffmpeg', [
-        '-y',
-        '-i', item.outputPath,
+        '-y', '-i', item.outputPath,
         '-filter_complex',
         '[0:v]' + videoFilter + '[v];[0:a]aresample=48000:async=1:first_pts=0[a]',
-        '-map', '[v]',
-        '-map', '[a]?',
-        '-c:v', 'libx264',
-        '-preset', 'medium',
-        '-crf', '18',
-        '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-ar', '48000',
-        '-ac', '2',
-        '-movflags', '+faststart',
+        '-map', '[v]', '-map', '[a]?',
+        '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+        '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k',
+        '-ar', '48000', '-ac', '2', '-movflags', '+faststart',
         normalizedPath
-      ]).catch(async error => {
-        // Sources without audio need a silent track so every normalized segment
-        // has the same stream structure.
+      ]);
+
+      // A source without audio needs a deterministic silent stereo track so
+      // every segment has the same stream contract for concat.
+      const audioProbe = await run('ffprobe', [
+        '-v', 'error',
+        '-select_streams', 'a:0',
+        '-show_entries', 'stream=index',
+        '-of', 'csv=p=0',
+        normalizedPath
+      ]);
+      if (!audioProbe.stdout.trim()) {
+        const silentPath = normalizedPath + '.silent.mp4';
+        temporaryPaths.push(silentPath);
         await run('ffmpeg', [
-          '-y',
-          '-i', item.outputPath,
-          '-f', 'lavfi',
-          '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
-          '-filter_complex',
-          '[0:v]' + videoFilter + '[v]',
-          '-map', '[v]',
-          '-map', '1:a',
-          '-shortest',
-          '-c:v', 'libx264',
-          '-preset', 'medium',
-          '-crf', '18',
-          '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac',
-          '-b:a', '192k',
-          '-ar', '48000',
-          '-ac', '2',
-          '-movflags', '+faststart',
-          normalizedPath
+          '-y', '-i', normalizedPath,
+          '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+          '-map', '0:v:0', '-map', '1:a:0', '-shortest',
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+          '-ar', '48000', '-ac', '2', '-movflags', '+faststart',
+          silentPath
         ]);
-      });
+        fs.renameSync(silentPath, normalizedPath);
+      }
 
       normalized.push(normalizedPath);
       temporaryPaths.push(normalizedPath);
