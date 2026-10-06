@@ -165,7 +165,7 @@ app.get('/api/jobs/:jobId/events', (req, res) => {
 
   const cleanup = generationQueue.subscribe(req.params.jobId, res);
   const heartbeat = setInterval(() => {
-    try { res.write(': keep-alive\\n\\n'); } catch {}
+    try { res.write(': keep-alive\n\n'); } catch {}
   }, 20_000);
 
   req.on('close', () => {
