@@ -1,0 +1,44 @@
+name: Browser E2E
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cinematic
+          POSTGRES_PASSWORD: cinematic
+          POSTGRES_DB: cinematic_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cinematic -d cinematic_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://cinematic:cinematic@127.0.0.1:5432/cinematic_test
+      NODE_ENV: test
+      APP_AUTH_PASSWORD: unused-in-db-mode
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run browser flow
+        run: npm run test:e2e
