@@ -5,7 +5,7 @@ test('login → generate → export production flow', async ({ page, request }) 
   const email = `e2e-${suffix}@example.test`;
   const password = 'correct-horse-battery-9';
 
-  const register = await request.post('http://127.0.0.1:5173/api/auth/register', {
+  const register = await request.post('http://127.0.0.1:8787/api/auth/register', {
     data: { email, password, displayName: 'E2E User' }
   });
   expect(register.ok()).toBeTruthy();
@@ -39,7 +39,7 @@ test('login → generate → export production flow', async ({ page, request }) 
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByText('Generate a shot')).toBeVisible();
 
-  const project = await page.context().request.post('http://127.0.0.1:5173/api/film/projects', {
+  const project = await page.context().request.post('http://127.0.0.1:8787/api/film/projects', {
     data: { title: 'E2E Film' }
   });
   expect(project.ok()).toBeTruthy();
