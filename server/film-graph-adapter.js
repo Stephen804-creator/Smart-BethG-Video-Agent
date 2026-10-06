@@ -138,8 +138,57 @@ export function projectToCanonicalGraph(project) {
   const sceneIds = new Set(scenes.map(s => s.id));
   const shots = (project.shots || [])
     .filter(shot => !shot.sceneId || sceneIds.has(shot.sceneId))
-    .map((shot, i) => mapShot(project.id, shot, i))
+    .map((shot, i) => ({
+      ...mapShot(project.id, shot, i),
+      sceneId: shot.sceneId || scenes[i]?.id || null
+    }))
     .filter(shot => shot.sceneId);
+
+  const events = (project.events || []).map((event, i) => ({
+    ...event,
+    id: event.id || stableId('event', project.id + ':' + i + ':' + (event.eventType || '') + ':' + (event.timeValueMs || event.timeMs || 0)),
+    projectId: project.id,
+    timeMode: event.timeMode || 'SHOT_RELATIVE',
+    timeValueMs: Number(event.timeValueMs || event.timeMs || 0),
+    durationMs: Number(event.durationMs || 0),
+    offsetMs: Number(event.offsetMs || 0),
+    status: event.status || 'planned'
+  }));
+
+  const eventIds = new Set(events.map(event => event.id));
+  const dialogue = (project.dialogue || []).map((d, i) => {
+    let eventId = d.eventId || null;
+    if (!eventId || !eventIds.has(eventId)) {
+      eventId = stableId('dialogue-event', project.id + ':' + i + ':' + (d.text || ''));
+      if (!eventIds.has(eventId)) {
+        events.push({
+          id: eventId,
+          projectId: project.id,
+          sceneId: d.sceneId || null,
+          shotId: d.shotId || null,
+          eventType: 'DIALOGUE',
+          source: 'derived',
+          timeMode: 'SHOT_RELATIVE',
+          timeValueMs: Number(d.startMs || 0),
+          durationMs: Math.max(0, Number((d.endMs ?? d.startMs ?? 0) - (d.startMs ?? 0))),
+          payload: {},
+          sourceEventId: null,
+          offsetMs: 0,
+          status: 'planned'
+        });
+        eventIds.add(eventId);
+      }
+    }
+    return {
+      ...d,
+      id: d.id || stableId('dialogue', project.id + ':' + i + ':' + (d.text || '')),
+      projectId: project.id,
+      eventId,
+      text: d.text || '',
+      startMs: d.startMs ?? null,
+      endMs: d.endMs ?? null
+    };
+  });
 
   return {
     project: mapProject(project),
