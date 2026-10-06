@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-const uuid = (prefix) => prefix + '-' + crypto.randomUUID();
+const stableId = (prefix, seed) => prefix + '-' + crypto.createHash('sha256').update(String(seed)).digest('hex').slice(0, 24);
 
 function json(value, fallback) {
   return value == null ? fallback : value;
@@ -21,7 +21,7 @@ function mapProject(project) {
 function mapStory(project) {
   const story = project.story || {};
   return {
-    id: story.id || uuid('story'),
+    id: story.id || stableId('story', project.id),
     projectId: project.id,
     premise: story.premise || project.premise || '',
     theme: story.theme || '',
@@ -30,9 +30,9 @@ function mapStory(project) {
   };
 }
 
-function mapCharacter(projectId, character) {
+function mapCharacter(projectId, character, index) {
   return {
-    id: character.id || uuid('character'),
+    id: character.id || stableId('character', projectId + ':' + index + ':' + (character.name || '')),
     projectId,
     name: character.name || 'Unnamed Character',
     role: character.role || '',
@@ -47,9 +47,9 @@ function mapCharacter(projectId, character) {
   };
 }
 
-function mapScene(projectId, scene, locationId = null) {
+function mapScene(projectId, scene, index, locationId = null) {
   return {
-    id: scene.id || uuid('scene'),
+    id: scene.id || stableId('scene', projectId + ':' + index + ':' + (scene.slug || scene.title || scene.number || '')),
     projectId,
     screenplayId: null,
     sequenceId: null,
@@ -63,13 +63,13 @@ function mapScene(projectId, scene, locationId = null) {
     emotionalState: { mood: scene.mood || '' },
     visualDirection: { blocking: scene.blocking || '', weather: scene.weather || '' },
     audioDirection: { audio: scene.audio || '' },
-    status: scene.status || 'planned'
+    status: scene.status || 'planned',\n    orderIndex: Number(scene.orderIndex || index + 1)
   };
 }
 
-function mapShot(projectId, shot) {
+function mapShot(projectId, shot, index) {
   return {
-    id: shot.id || uuid('shot'),
+    id: shot.id || stableId('shot', projectId + ':' + index + ':' + (shot.number || shot.sequence || shot.description || '')),
     projectId,
     sceneId: shot.sceneId || null,
     number: Number(shot.number || shot.sequence || 1),
@@ -88,16 +88,16 @@ function mapShot(projectId, shot) {
     lighting: json(shot.lighting, {}),
     visualStyle: json(shot.visualStyle, {}),
     duration: Number(shot.duration || 0) || null,
-    fps: Number(shot.fps || 0) || null
+    fps: Number(shot.fps || 0) || null,\n    orderIndex: Number(shot.orderIndex || index + 1)
   };
 }
 
 export function projectToCanonicalGraph(project) {
   if (!project?.id) throw new Error('A film project requires an id.');
 
-  const characters = (project.characters || []).map(c => mapCharacter(project.id, c));
-  const locations = (project.world?.locations || []).map(location => ({
-    id: location.id || uuid('location'),
+  const characters = (project.characters || []).map((c, i) => mapCharacter(project.id, c, i));
+  const locations = (project.world?.locations || []).map((location, i) => ({
+    id: location.id || stableId('location', project.id + ':' + i + ':' + (typeof location === 'string' ? location : location.name || '')),
     projectId: project.id,
     name: typeof location === 'string' ? location : (location.name || 'Location'),
     description: typeof location === 'string' ? '' : (location.description || ''),
@@ -109,23 +109,44 @@ export function projectToCanonicalGraph(project) {
   }));
 
   const locationByName = new Map(locations.map(l => [l.name.toLowerCase(), l.id]));
-  const scenes = (project.scenes || []).map(scene => mapScene(
-    project.id,
-    scene,
-    scene.locationId || locationByName.get(String(scene.location || '').toLowerCase()) || null
-  ));
+  const screenplayId = project.screenplayId || stableId('screenplay', project.id);
+  const sequences = (project.sequences || []).map((seq, index) => ({
+    id: seq.id || stableId('sequence', project.id + ':' + index + ':' + (seq.title || seq.number || '')),
+    projectId: project.id,
+    screenplayId,
+    number: Number(seq.number || index + 1),
+    title: seq.title || '',
+    purpose: seq.purpose || '',
+    orderIndex: Number(seq.orderIndex || index + 1)
+  }));
+  const sequenceByNumber = new Map(sequences.map(s => [s.number, s.id]));
+
+  const scenes = (project.scenes || []).map((scene, index) => {
+    const mapped = mapScene(
+      project.id,
+      scene,
+      index,
+      scene.locationId || locationByName.get(String(scene.location || '').toLowerCase()) || null
+    );
+    return {
+      ...mapped,
+      screenplayId,
+      sequenceId: scene.sequenceId || (scene.sequence != null ? sequenceByNumber.get(Number(scene.sequence)) : null)
+    };
+  });
 
   const sceneIds = new Set(scenes.map(s => s.id));
   const shots = (project.shots || [])
     .filter(shot => !shot.sceneId || sceneIds.has(shot.sceneId))
-    .map(shot => mapShot(project.id, shot));
+    .map((shot, i) => mapShot(project.id, shot, i))
+    .filter(shot => shot.sceneId);
 
   return {
     project: mapProject(project),
     story: mapStory(project),
     characters,
     locations,
-    props: (project.props || project.world?.props || []).map(prop => ({\n      id: prop.id || uuid('prop'), projectId: project.id, name: prop.name || 'Prop', description: prop.description || '',\n      appearance: json(prop.appearance, {}), ownerCharacterId: prop.ownerCharacterId || null,\n      references: json(prop.references, []), continuityConstraints: json(prop.continuityConstraints, {})\n    })),
+    props: (project.props || project.world?.props || []).map((prop, i) => ({\n      id: prop.id || stableId('prop', project.id + ':' + i + ':' + (prop.name || '')), projectId: project.id, name: prop.name || 'Prop', description: prop.description || '',\n      appearance: json(prop.appearance, {}), ownerCharacterId: prop.ownerCharacterId || null,\n      references: json(prop.references, []), continuityConstraints: json(prop.continuityConstraints, {})\n    })),
     styles: [{
       projectId: project.id,
       visual: {},
@@ -138,7 +159,7 @@ export function projectToCanonicalGraph(project) {
       music: {}
     }],
     screenplay: {
-      id: project.screenplayId || uuid('screenplay'),
+      id: screenplayId,
       projectId: project.id,
       title: project.title || '',
       version: 1,
@@ -146,7 +167,7 @@ export function projectToCanonicalGraph(project) {
       sourceFormat: 'structured',
       sourceText: ''
     },
-    sequences: (project.sequences || []).map((seq, index) => ({\n      id: seq.id || uuid('sequence'), projectId: project.id, screenplayId: project.screenplayId || null,\n      number: Number(seq.number || index + 1), title: seq.title || '', purpose: seq.purpose || '', orderIndex: Number(seq.orderIndex || index + 1)\n    })),
+    sequences,
     scenes,
     shots,
     events: (project.events || []).map(event => ({\n      ...event, projectId: project.id, timeMode: event.timeMode || 'SHOT_RELATIVE',\n      timeValueMs: Number(event.timeValueMs || event.timeMs || 0), durationMs: Number(event.durationMs || 0), offsetMs: Number(event.offsetMs || 0),\n      status: event.status || 'planned'\n    })),
@@ -159,7 +180,7 @@ export function projectToCanonicalGraph(project) {
       entityType: item.entityType || 'unknown',
       entityId: item.entityId || item.entity || '',
       state: { value: item.state || '', notes: item.notes || {} },
-      sourceEventId: null
+      sourceEventId: item.sourceEventId || null
     })),
     assets: (project.assets || []).map(asset => ({
       ...asset,
