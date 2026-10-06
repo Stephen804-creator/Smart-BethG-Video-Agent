@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('login → generate → export production flow', async ({ page }) => {
+  page.on('pageerror', error => console.log('PAGE_ERROR', error.stack));
   const suffix = Date.now();
   const email = `e2e-${suffix}@example.test`;
   const password = 'e2e-password';
@@ -58,6 +59,8 @@ test('login → generate → export production flow', async ({ page }) => {
   await page.getByPlaceholder('Email address').fill(email);
   await page.getByPlaceholder('Password (8+ characters)').fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForTimeout(500);
+  console.log('AFTER_LOGIN_TEXT', await page.locator('body').innerText());
   await expect(page.getByText('Generate a shot')).toBeVisible();
 
   await expect(page.getByPlaceholder('Describe the shot you want to generate…')).toBeVisible();
