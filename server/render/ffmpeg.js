@@ -25,6 +25,14 @@ async function probeDuration(inputPath) {
   if (!Number.isFinite(value)) throw new Error('Could not determine source duration.');
   return value;
 }
+\nasync function hasAudioStream(inputPath) {
+  try {
+    const result = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', inputPath]);
+    return Boolean(result.stdout.trim());
+  } catch {
+    return false;
+  }
+}
 
 function atempoChain(speed) {
   if (speed === 1) return null;
@@ -123,16 +131,18 @@ export async function renderTimeline({ clips = [], outputDir }) {
     rendered.push(item);
 
     const normalizedPath = path.join(outputDir, 'timeline-normalized-' + crypto.randomUUID() + '.mp4');
-    await run('ffmpeg', [
+    const audio = await hasAudioStream(item.outputPath);
+    const normalizeArgs = [
       '-y', '-i', item.outputPath,
-      '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
-      '-filter_complex',
-      '[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v]',
-      '-map', '[v]', '-map', '0:a?', '-map', '1:a',
+      ...(audio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']),
+      '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p',
+      '-map', '0:v:0',
+      ...(audio ? ['-map', '0:a:0'] : ['-map', '1:a:0']),
       '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
       '-shortest', normalizedPath
-    ]);
+    ];
+    await run('ffmpeg', normalizeArgs);
     normalized.push(normalizedPath);
   }
 
