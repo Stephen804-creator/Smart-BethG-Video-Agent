@@ -6,7 +6,7 @@
  * stable IDs instead of creating duplicate production entities.
  */
 
-const j = (value, fallback) => JSON.stringify(value == null ? fallback : value);
+const j = (value, fallback) => JSON.stringify(value == null ? fallback : value);\nconst ms = (value) => Math.max(0, Number(value || 0));
 
 async function upsert(db, sql, values) {
   await db.query(sql, values);
@@ -286,8 +286,8 @@ export async function persistCanonicalFilmGraph(db, graph) {
             source_id=EXCLUDED.source_id,start_ms=EXCLUDED.start_ms,duration_ms=EXCLUDED.duration_ms,
             in_ms=EXCLUDED.in_ms,out_ms=EXCLUDED.out_ms,linked_clip_ids=EXCLUDED.linked_clip_ids,
             event_ids=EXCLUDED.event_ids,metadata=EXCLUDED.metadata`,
-          [clip.id,timeline.id,clip.trackId||'video-main',clip.sourceType||'media',clip.sourceId,startMs(clip.startMs),startMs(clip.durationMs),
-            startMs(clip.inMs),clip.outMs==null?null:startMs(clip.outMs),j(clip.linkedClipIds||[],[]),j(clip.eventIds||[],[]),j(clip.metadata||{}, {})]);
+          [clip.id,timeline.id,clip.trackId||'video-main',clip.sourceType||'media',clip.sourceId,ms(clip.startMs),ms(clip.durationMs),
+            ms(clip.inMs),clip.outMs==null?null:ms(clip.outMs),j(clip.linkedClipIds||[],[]),j(clip.eventIds||[],[]),j(clip.metadata||{}, {})]);
       }
     }
     count('timelines', graph.timelines);
@@ -314,8 +314,8 @@ export async function persistCanonicalFilmGraph(db, graph) {
           source_in_ms=EXCLUDED.source_in_ms,source_out_ms=EXCLUDED.source_out_ms,gain_db=EXCLUDED.gain_db,
           fade_in_ms=EXCLUDED.fade_in_ms,fade_out_ms=EXCLUDED.fade_out_ms,automation=EXCLUDED.automation,
           event_ids=EXCLUDED.event_ids,metadata=EXCLUDED.metadata`,
-        [clip.id,p.id,clip.trackId,clip.assetId||null,startMs(clip.startMs),startMs(clip.durationMs),startMs(clip.sourceInMs),
-          clip.sourceOutMs==null?null:startMs(clip.sourceOutMs),Number(clip.gainDb||0),startMs(clip.fadeInMs),startMs(clip.fadeOutMs),
+        [clip.id,p.id,clip.trackId,clip.assetId||null,ms(clip.startMs),ms(clip.durationMs),ms(clip.sourceInMs),
+          clip.sourceOutMs==null?null:ms(clip.sourceOutMs),Number(clip.gainDb||0),ms(clip.fadeInMs),ms(clip.fadeOutMs),
           j(clip.automation||{},{}),j(clip.eventIds||[],[]),j(clip.metadata||{}, {})]);
     }
     count('audioClips', graph.audioClips);
@@ -339,7 +339,7 @@ export async function persistCanonicalFilmGraph(db, graph) {
         ON CONFLICT (id) DO UPDATE SET
           source_id=EXCLUDED.source_id,shot_id=EXCLUDED.shot_id,asset_id=EXCLUDED.asset_id,
           in_ms=EXCLUDED.in_ms,out_ms=EXCLUDED.out_ms,sync_offset_ms=EXCLUDED.sync_offset_ms,metadata=EXCLUDED.metadata`,
-        [clip.id,p.id,clip.sourceId,clip.shotId||null,clip.assetId||null,startMs(clip.inMs),clip.outMs==null?null:startMs(clip.outMs),
+        [clip.id,p.id,clip.sourceId,clip.shotId||null,clip.assetId||null,ms(clip.inMs),clip.outMs==null?null:ms(clip.outMs),
           Number(clip.syncOffsetMs||0),j(clip.metadata||{}, {})]);
     }
     count('cameraClips', graph.cameraClips);
