@@ -26,8 +26,11 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
-    "concurrently": "^9.2.4",
+    "concurrently": "^10.0.5",
     "@playwright/test": "^1.63.0",
     "supertest": "^7.3.1"
+  },
+  "overrides": {
+    "shell-quote": "^1.12.0"
   }
 }
