@@ -10,6 +10,10 @@ test('login → generate → export production flow', async ({ page, request }) 
   });
   expect(register.ok()).toBeTruthy();
 
+  await page.route('**/api/auth/status', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ authenticated: false, registration: true })
+  }));
   await page.route('**/api/providers*', route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ providers: [{ id: 'huggingface-ltx', configured: true, health: { ok: true } }] })
