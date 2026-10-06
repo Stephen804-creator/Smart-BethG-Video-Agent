@@ -244,8 +244,9 @@ export function projectToCanonicalGraph(project) {
       state: { value: item.state || '', notes: item.notes || {} },
       sourceEventId: item.sourceEventId || null
     })),
-    assets: (project.assets || []).map(asset => ({
+    assets: (project.assets || []).map((asset, i) => ({
       ...asset,
+      id: asset.id || stableId('asset', project.id + ':' + i + ':' + (asset.uri || asset.name || '')),
       projectId: project.id,
       assetType: asset.assetType || asset.sourceType || 'media'
     })),
