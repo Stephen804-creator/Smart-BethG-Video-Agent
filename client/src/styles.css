@@ -1496,9 +1496,51 @@ html, body, #root {
   min-height: 100%;
 }
 
+html {
+  font-size: 12px;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
+}
+
+body[data-theme="light"], html[data-theme="light"] body {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #f0f3f6;
+  --surface-3: #e7ebef;
+  --border: #c8d0d8;
+  --border-strong: #9ca8b4;
+  --text: #18212a;
+  --text-muted: #52606d;
+  --text-subtle: #687582;
+  --accent: #315f9b;
+  --success: #247a4a;
+  --danger: #b42318;
+  --focus: #245ea8;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+.screen {
+  min-width: 0;
+}
+
+.app-shell {
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 button, input, textarea, select {
