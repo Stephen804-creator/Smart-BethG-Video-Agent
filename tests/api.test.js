@@ -33,6 +33,7 @@ before(async () => {
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
+  serverProcess.stdout.on('data', chunk => process.stdout.write(String(chunk)));
   serverProcess.stderr.on('data', chunk => process.stderr.write(String(chunk)));
   await waitForServer('http://127.0.0.1:8787');
   api = request('http://127.0.0.1:8787');
