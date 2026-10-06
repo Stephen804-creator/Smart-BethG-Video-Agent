@@ -25,7 +25,7 @@ async function probeDuration(inputPath) {
   if (!Number.isFinite(value)) throw new Error('Could not determine source duration.');
   return value;
 }
-\nasync function hasAudioStream(inputPath) {
+async function hasAudioStream(inputPath) {
   try {
     const result = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', inputPath]);
     return Boolean(result.stdout.trim());
