@@ -27,7 +27,7 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase } from './database.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, getFilmProjectFromDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
