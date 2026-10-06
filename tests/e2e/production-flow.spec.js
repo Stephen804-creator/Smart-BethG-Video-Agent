@@ -1,19 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-test('login → generate → export production flow', async ({ page, request }) => {
+test('login → generate → export production flow', async ({ page }) => {
   const suffix = Date.now();
   const email = `e2e-${suffix}@example.test`;
-  const password = 'correct-horse-battery-9';
+  const password = 'e2e-password';
 
-  const register = await request.post('http://127.0.0.1:8787/api/auth/register', {
-    data: { email, password, displayName: 'E2E User' }
-  });
-  expect(register.ok()).toBeTruthy();
-
-  await page.route('**/api/auth/status', route => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ authenticated: false, registration: true })
-  }));
   await page.route('**/api/providers*', route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ providers: [{ id: 'huggingface-ltx', configured: true, health: { ok: true } }] })
@@ -38,8 +29,6 @@ test('login → generate → export production flow', async ({ page, request }) 
 
   await page.context().clearCookies();
   await page.goto('/');
-  await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }));
-  await page.reload();
   await expect(page.getByText('Sign in to access your production workspace.')).toBeVisible();
   await page.getByPlaceholder('Email address').fill(email);
   await page.getByPlaceholder('Password (8+ characters)').fill(password);
