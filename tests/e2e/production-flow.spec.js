@@ -28,7 +28,14 @@ test('login → generate → export production flow', async ({ page }) => {
   }));
 
   await page.context().clearCookies();
+  page.on('response', async response => {
+    if (response.url().includes('/api/auth/status')) {
+      console.log('AUTH_STATUS', response.status(), await response.text());
+    }
+  });
   await page.goto('/');
+  await page.waitForTimeout(1000);
+  console.log('PAGE_TEXT', await page.locator('body').innerText());
   await expect(page.getByText('Sign in to access your production workspace.')).toBeVisible();
   await page.getByPlaceholder('Email address').fill(email);
   await page.getByPlaceholder('Password (8+ characters)').fill(password);
