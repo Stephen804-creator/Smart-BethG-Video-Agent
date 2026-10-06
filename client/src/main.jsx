@@ -760,7 +760,7 @@ function App() {
 
     {showSettings && <section className="panel settings appearance-panel"><h2>Appearance</h2><p className="hint">Visual preferences will live here. Provider credentials remain server-side environment configuration and are never exposed as user-editable workspace fields.</p><label>Interface density<select value={density} onChange={e => setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></section>}
 
-    {showWorkspaceMenu && <section className="panel dashboard-panel">
+    {showWorkspaceMenu && <ProjectScreen><section className="panel dashboard-panel">
       <div className="section-head">
         <div><div className="eyebrow">WORKSPACE</div><h2>Production dashboard</h2><span className="hint">Resume a project or continue a visual sequence without searching through the workspace.</span></div>
         <span className="tag">{filmProjects.length} projects · {filmProjects.reduce((n, p) => n + (p.shots?.length || 0), 0)} shots</span>
@@ -781,7 +781,7 @@ function App() {
           </div>
         </div>
       </div>
-    </section>}
+    </section></ProjectScreen>}
     {showWorkspaceMenu && filmMode && <section className="panel film-assistant">
       <div className="section-head">
         <div><h2><Icon name="WandSparkles" size={18}/> Director Assistant</h2><span className="hint">Use normal filmmaking language. The agent turns your idea into scenes, shots, continuity and production tasks.</span></div>
@@ -1055,7 +1055,7 @@ function App() {
           </div>
         </div>}
 
-        {filmTab === 'shots' && <div id="tabpanel-shots" role="tabpanel" aria-labelledby="tab-shots" className="workspace-grid">
+        {filmTab === 'shots' && <TimelineScreen><div id="tabpanel-shots" role="tabpanel" aria-labelledby="tab-shots" className="workspace-grid">
           <div>
             <div className="subhead"><strong>Scene builder</strong><button onClick={addFilmScene}>+ Scene</button></div>
             <div className="scene-list">{(filmProject.scenes || []).map(s => <button className={selectedSceneId === s.id ? 'scene-card active' : 'scene-card'} key={s.id} onClick={() => { setSelectedSceneId(s.id); syncSceneDraft(s); }}><b>Scene {s.number}</b><span>{s.title}</span><small>{s.dramaticBeat || s.description || 'No dramatic beat yet.'}</small></button>)}{!filmProject.scenes?.length && <span className="hint">No scenes yet.</span>}</div>
@@ -1120,7 +1120,7 @@ function App() {
           </div>
         </div>}
 
-        {filmTab === 'takes' && <div id="tabpanel-takes" role="tabpanel" aria-labelledby="tab-takes" className="workspace-grid">
+        {filmTab === 'takes' && <TimelineScreen><div id="tabpanel-takes" role="tabpanel" aria-labelledby="tab-takes" className="workspace-grid">
           <div>
             <div className="subhead"><strong>Camera take log</strong><span className="hint">Metadata first; media can be linked when available.</span></div>
             <div className="shot-list">{filmShots.map(s => <div className="shot-row" key={s.id}><div><b>Shot {s.number}</b><span>{s.framing} · {s.movement}</span><small>{filmTakes.filter(t => t.shotId === s.id).length} takes · {s.selectedTakeId ? 'selected take recorded' : 'no selected take'}</small></div><button onClick={() => setTakeDraft({...takeDraft, shotId:s.id})}>Log take</button></div>)}</div>
@@ -1135,11 +1135,11 @@ function App() {
             <button disabled={!takeDraft.shotId} onClick={() => addFilmTake(takeDraft.shotId)}>Save take</button>
           </div>
           <div className="take-history">{filmTakes.map(t => <div className="take-card" key={t.id}><b>Take {t.takeNumber}</b><span>{t.camera || 'Camera TBD'} · {t.fps}fps · ISO {t.iso || '—'} · {t.shutter || '—'}</span><small>{t.mediaUri || 'No media linked yet.'}</small><button onClick={() => selectFilmTake(t.shotId,t.id)}>{t.selected ? '✓ Selected take' : 'Select as best take'}</button></div>)}</div>
-        </div>}
+        </div></TimelineScreen>}
 
         {filmTab === 'continuity' && <div id="tabpanel-continuity" role="tabpanel" aria-labelledby="tab-continuity" className="continuity-board"><div className="subhead"><strong>Continuity board</strong><button onClick={runContinuityCheck}>Run continuity check</button></div><span className="hint">Checks the actual project state: characters, world rules, scene/shot attachment, camera continuity and logged continuity events.</span><div className="continuity-grid"><div><b>{filmProject?.characters?.length || 0}</b><small>Characters with persistent identity</small></div><div><b>{[...new Set((filmProject?.scenes||[]).flatMap(x=>x.props||[]))].length}</b><small>Tracked scene props</small></div><div><b>{(filmProject?.shots||[]).filter(x=>x.sceneId).length}/{filmProject?.shots?.length || 0}</b><small>Shots attached to scenes</small></div><div><b>{filmProject?.continuity?.length || 0}</b><small>Logged continuity events</small></div></div>{continuityReport && <div className="review-result"><strong>{continuityReport.recommendations?.length ? 'Findings' : 'No obvious continuity gaps'}</strong>{(continuityReport.recommendations || []).map((item,i)=><span key={i}>• {item}</span>)}</div>}</div>}
 
-        {filmTab === 'assets' && <div id="tabpanel-assets" role="tabpanel" aria-labelledby="tab-assets" className="asset-workspace">
+        {filmTab === 'assets' && <LibraryScreen><div id="tabpanel-assets" role="tabpanel" aria-labelledby="tab-assets" className="asset-workspace">
           <div className="subhead"><strong>Production media</strong><span className="hint">{filmProject.assets?.length || 0} assets</span></div>
           <div className="asset-import">
             <label>Attach upload to shot
@@ -1173,7 +1173,7 @@ function App() {
             })}
             {!filmProject.assets?.length && <span className="hint">No media imported yet.</span>}
           </div>
-        </div>}
+        </div></LibraryScreen>}
 
         {filmTab === 'assistant' && <div id="tabpanel-assistant" role="tabpanel" aria-labelledby="tab-assistant" className="assistant-workspace"><strong>AI production assistant</strong><p>The assistant reviews the actual project state before recommending the next production step.</p><button onClick={reviewFilmProject}>Analyze this production</button>{filmReview && <div className="review-result"><b>{filmReview.summary.shots} shots · {filmReview.summary.takes} takes</b>{filmReview.recommendations.map((item,i)=><span key={i}>• {item}</span>)}<strong>Next: {filmReview.next_action}</strong></div>}<div className="checklist"><span>✓ Check establishing, action and reaction coverage.</span><span>✓ Track characters, props, wardrobe and screen direction.</span><span>✓ Compare camera, lens, FPS, shutter and ISO across takes.</span><span>✓ Mix real camera footage with AI-generated shots when needed.</span></div></div>}
       </div>}
@@ -1227,6 +1227,7 @@ function App() {
     </section>
 
     <main id="main-content" tabIndex="-1">
+      <GenerateScreen>
       <section className="hero-workspace">
       <section className="panel composer">
         <div className="section-head"><h2>Generate a shot</h2><span className="status"><i className={generating ? 'busy' : ''}/> {status}</span></div>
@@ -1261,6 +1262,7 @@ function App() {
         </div>}
       </section>
       </section>
+      </GenerateScreen>
     </main>
     </div>
     <aside className="inspector" aria-label="Generation inspector">
