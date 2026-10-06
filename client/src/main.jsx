@@ -1,70 +1,132 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { Icon } from './icons.jsx';
+import { useAppState } from './hooks/useAppState.js';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
 function App() {
-  const [prompt, setPrompt] = useState('');
-  const [provider, setProvider] = useState('huggingface-ltx');
-  const [duration, setDuration] = useState(2);
-  const [ratio, setRatio] = useState('16:9');
-  const [framing, setFraming] = useState('medium shot');
-  const [cameraMovement, setCameraMovement] = useState('slow push-in');
-  const [lighting, setLighting] = useState('natural cinematic');
-  const [status, setStatus] = useState('Ready');
-  const [result, setResult] = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
-  const [showGenerationControls, setShowGenerationControls] = useState(false);
-  const [providers, setProviders] = useState([]);
-  const [generating, setGenerating] = useState(false);
-  const [referenceGenerationId, setReferenceGenerationId] = useState(null);
-  const [mediaFormats, setMediaFormats] = useState([]);
-  const [selectedFormat, setSelectedFormat] = useState('cinematic');
-  const [genre, setGenre] = useState('action');
-  const [formatPlan, setFormatPlan] = useState(null);
-  const [planning, setPlanning] = useState(false);
-  const [formatMenuOpen, setFormatMenuOpen] = useState(false);
-  const [showShotControls, setShowShotControls] = useState(false);
-  const [filmMode, setFilmMode] = useState(false);
-  const [filmIdea, setFilmIdea] = useState('');
-  const [filmAssist, setFilmAssist] = useState(null);
-  const [assisting, setAssisting] = useState(false);
-  const [filmProjects, setFilmProjects] = useState([]);
-  const [filmProjectId, setFilmProjectId] = useState('');
-  const [filmProject, setFilmProject] = useState(null);
-  const [shotDraft, setShotDraft] = useState({ sceneId: '', framing: 'medium shot', angle: 'eye level', movement: 'static', lens: '35mm', lighting: 'natural cinematic', audio: 'production sound', description: '' });
-  const [takeDraft, setTakeDraft] = useState({ camera: '', lens: '35mm', fps: 24, shutter: '1/48', iso: '400', whiteBalance: '5600K', location: '', mediaUri: '', notes: '' });
-  const [filmTab, setFilmTab] = useState('shots');
-  const [filmReview, setFilmReview] = useState(null);
-  const [continuityReport, setContinuityReport] = useState(null);
-  const [assetUploadShotId, setAssetUploadShotId] = useState('');
-  const [uploadingAsset, setUploadingAsset] = useState(false);
-  const [storyDraft, setStoryDraft] = useState({ premise: '', theme: '', tone: '', setting: '', rules: '', locations: '', factions: '', terminology: '' });
-  const [characterDraft, setCharacterDraft] = useState({ name: '', role: '', appearance: '', personality: '', description: '' });
-  const [selectedSceneId, setSelectedSceneId] = useState('');
-  const [sceneDraft, setSceneDraft] = useState({ title: '', location: '', timeOfDay: '', dramaticBeat: '', characters: '', blocking: '', action: '', dialogue: '', mood: '', weather: '', props: '', description: '' });
-  const [productionTool, setProductionTool] = useState('');
-  const [editDraft, setEditDraft] = useState({ shotId: '', trimIn: 0, trimOut: 0, speed: 1, transition: 'cut', volume: 100 });
-  const [effectDraft, setEffectDraft] = useState({ effect: 'none', intensity: 50, background: 'original', overlay: '', stabilization: false });
-  const [audioDraft, setAudioDraft] = useState({ dialogue: 100, music: 70, sfx: 100, ambience: 80 });
-  const [workspaceTool, setWorkspaceTool] = useState('');
-  const [route, setRoute] = useState(window.location.pathname || '/generator');
-  const [density, setDensity] = useState(localStorage.getItem('cinematic-density') || 'comfortable');
-  const [notice, setNotice] = useState(null);
-  const [progress, setProgress] = useState(0);
-  const [selectedLayer, setSelectedLayer] = useState('base');
-  const [jobCost, setJobCost] = useState(null);
-  const [activeJobId, setActiveJobId] = useState(null);
-  const [retryJobId, setRetryJobId] = useState(null);
-  const [authenticated, setAuthenticated] = useState(false);
-  const [authReady, setAuthReady] = useState(false);
-  const [loginPassword, setLoginPassword] = useState('');
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [authMode, setAuthMode] = useState('login');
+  const {
+prompt,
+    provider,
+    duration,
+    ratio,
+    framing,
+    cameraMovement,
+    lighting,
+    status,
+    result,
+    showSettings,
+    showWorkspaceMenu,
+    showGenerationControls,
+    providers,
+    generating,
+    referenceGenerationId,
+    mediaFormats,
+    selectedFormat,
+    genre,
+    formatPlan,
+    planning,
+    formatMenuOpen,
+    showShotControls,
+    filmMode,
+    filmIdea,
+    filmAssist,
+    assisting,
+    filmProjects,
+    filmProjectId,
+    filmProject,
+    shotDraft,
+    takeDraft,
+    filmTab,
+    filmReview,
+    continuityReport,
+    assetUploadShotId,
+    uploadingAsset,
+    storyDraft,
+    characterDraft,
+    selectedSceneId,
+    sceneDraft,
+    productionTool,
+    editDraft,
+    effectDraft,
+    audioDraft,
+    workspaceTool,
+    route,
+    density,
+    notice,
+    progress,
+    selectedLayer,
+    jobCost,
+    activeJobId,
+    retryJobId,
+    authenticated,
+    authReady,
+    loginPassword,
+    loginEmail,
+    loginError,
+    authMode,
+    setPrompt,
+    setProvider,
+    setDuration,
+    setRatio,
+    setFraming,
+    setCameraMovement,
+    setLighting,
+    setStatus,
+    setResult,
+    setShowSettings,
+    setShowWorkspaceMenu,
+    setShowGenerationControls,
+    setProviders,
+    setGenerating,
+    setReferenceGenerationId,
+    setMediaFormats,
+    setSelectedFormat,
+    setGenre,
+    setFormatPlan,
+    setPlanning,
+    setFormatMenuOpen,
+    setShowShotControls,
+    setFilmMode,
+    setFilmIdea,
+    setFilmAssist,
+    setAssisting,
+    setFilmProjects,
+    setFilmProjectId,
+    setFilmProject,
+    setShotDraft,
+    setTakeDraft,
+    setFilmTab,
+    setFilmReview,
+    setContinuityReport,
+    setAssetUploadShotId,
+    setUploadingAsset,
+    setStoryDraft,
+    setCharacterDraft,
+    setSelectedSceneId,
+    setSceneDraft,
+    setProductionTool,
+    setEditDraft,
+    setEffectDraft,
+    setAudioDraft,
+    setWorkspaceTool,
+    setRoute,
+    setDensity,
+    setNotice,
+    setProgress,
+    setSelectedLayer,
+    setJobCost,
+    setActiveJobId,
+    setRetryJobId,
+    setAuthenticated,
+    setAuthReady,
+    setLoginPassword,
+    setLoginEmail,
+    setLoginError,
+    setAuthMode
+  } = useAppState();
 
   const routes = {
     '/': 'generator',
