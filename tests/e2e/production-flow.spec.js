@@ -1,14 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-test('login → generate → export production flow', async ({ page, request }) => {
+test('login → generate → export production flow', async ({ page }) => {
   const suffix = Date.now();
   const email = `e2e-${suffix}@example.test`;
   const password = 'correct-horse-battery-9';
-
-  const register = await request.post('http://127.0.0.1:5173/api/auth/register', {
-    data: { email, password, displayName: 'E2E User' }
-  });
-  expect(register.ok()).toBeTruthy();
 
   await page.route('**/api/providers*', route => route.fulfill({
     status: 200, contentType: 'application/json',
@@ -33,9 +28,14 @@ test('login → generate → export production flow', async ({ page, request }) 
   }));
 
   await page.goto('/');
+  await expect(page.getByText('Sign in to access your production workspace.')).toBeVisible();
+  await page.getByRole('button', { name: /Create a new account/i }).click();
+  await page.getByPlaceholder('Email address').fill(email);
+  await page.getByPlaceholder('Password (8+ characters)').fill(password);
+  await page.getByRole('button', { name: /Create account/i }).click();
   await expect(page.getByText('Generate a shot')).toBeVisible();
 
-  const project = await request.post('http://127.0.0.1:5173/api/film/projects', {
+  const project = await page.context().request.post('http://127.0.0.1:5173/api/film/projects', {
     data: { title: 'E2E Film' }
   });
   expect(project.ok()).toBeTruthy();
