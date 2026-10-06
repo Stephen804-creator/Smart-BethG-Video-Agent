@@ -1118,7 +1118,7 @@ function App() {
             </div>
 
           </div>
-        </div>}
+        </div></TimelineScreen>}
 
         {filmTab === 'takes' && <TimelineScreen><div id="tabpanel-takes" role="tabpanel" aria-labelledby="tab-takes" className="workspace-grid">
           <div>
