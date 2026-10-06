@@ -107,34 +107,102 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
 }
 
 
-export async function renderTimeline({ clips = [], outputDir }) {
+export async function renderTimeline({ clips = [], outputDir, keepIntermediates = false }) {
   if (!Array.isArray(clips) || !clips.length) throw new Error('A timeline requires at least one clip.');
   fs.mkdirSync(outputDir, { recursive: true });
+
   const rendered = [];
-  for (const clip of clips) {
-    const item = await renderShot({
-      inputPath: clip.inputPath,
-      outputDir,
-      edit: clip.edit || {},
-      effects: clip.effects || {},
-      audioMix: clip.audioMix || {}
-    });
-    rendered.push(item);
-  }
-  const listFile = path.join(outputDir, 'timeline-' + crypto.randomUUID() + '.txt');
-  fs.writeFileSync(listFile, rendered.map(item => "file '" + item.outputPath.replace(/'/g, "'\\''") + "'").join('\n'));
-  const filename = 'export-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8) + '.mp4';
-  const outputPath = path.join(outputDir, filename);
+  const normalized = [];
+  const temporaryPaths = [];
+
   try {
-    await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', outputPath]);
+    for (const clip of clips) {
+      const item = await renderShot({
+        inputPath: clip.inputPath,
+        outputDir,
+        edit: clip.edit || {},
+        effects: clip.effects || {},
+        audioMix: clip.audioMix || {}
+      });
+      rendered.push(item);
+      temporaryPaths.push(item.outputPath);
+
+      const normalizedPath = path.join(outputDir, 'timeline-normalized-' + crypto.randomUUID() + '.mp4');
+      const videoFilter = 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p';
+
+      // Every timeline segment gets the same video/audio contract before assembly.
+      // This prevents concat failures caused by mixed resolution, FPS or audio streams.
+      await run('ffmpeg', [
+        '-y',
+        '-i', item.outputPath,
+        '-filter_complex',
+        '[0:v]' + videoFilter + '[v];[0:a]aresample=48000:async=1:first_pts=0[a]',
+        '-map', '[v]',
+        '-map', '[a]?',
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '18',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-ar', '48000',
+        '-ac', '2',
+        '-movflags', '+faststart',
+        normalizedPath
+      ]).catch(async error => {
+        // Sources without audio need a silent track so every normalized segment
+        // has the same stream structure.
+        await run('ffmpeg', [
+          '-y',
+          '-i', item.outputPath,
+          '-f', 'lavfi',
+          '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+          '-filter_complex',
+          '[0:v]' + videoFilter + '[v]',
+          '-map', '[v]',
+          '-map', '1:a',
+          '-shortest',
+          '-c:v', 'libx264',
+          '-preset', 'medium',
+          '-crf', '18',
+          '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-ar', '48000',
+          '-ac', '2',
+          '-movflags', '+faststart',
+          normalizedPath
+        ]);
+      });
+
+      normalized.push(normalizedPath);
+      temporaryPaths.push(normalizedPath);
+    }
+
+    const listFile = path.join(outputDir, 'timeline-' + crypto.randomUUID() + '.txt');
+    temporaryPaths.push(listFile);
+    fs.writeFileSync(listFile, normalized.map(file => "file '" + file.replace(/'/g, "'\\''") + "'").join('\n'));
+
+    const filename = 'export-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8) + '.mp4';
+    const outputPath = path.join(outputDir, filename);
+
+    await run('ffmpeg', [
+      '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
+      '-c', 'copy', '-movflags', '+faststart', outputPath
+    ]);
+
+    return {
+      filename,
+      outputPath,
+      output: '/output/' + filename,
+      clips: rendered,
+      duration: await probeDuration(outputPath)
+    };
   } finally {
-    try { fs.unlinkSync(listFile); } catch {}
+    if (!keepIntermediates) {
+      for (const file of temporaryPaths) {
+        try { fs.unlinkSync(file); } catch {}
+      }
+    }
   }
-  return {
-    filename,
-    outputPath,
-    output: '/output/' + filename,
-    clips: rendered,
-    duration: await probeDuration(outputPath)
-  };
 }
