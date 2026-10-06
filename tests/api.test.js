@@ -71,7 +71,7 @@ test('two users cannot read or mutate each other\'s film projects or jobs', { sk
   const projectId = created.body.project.id;
 
   const ownProject = await userA.get('/api/film/projects/' + projectId);
-  assert.equal(ownProject.status, 200);
+  assert.equal(ownProject.status, 200, JSON.stringify(ownProject.body));
 
   const foreignProject = await userB.get('/api/film/projects/' + projectId);
   assert.equal(foreignProject.status, 404);
