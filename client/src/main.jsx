@@ -54,6 +54,7 @@ function App() {
   const [workspaceTool, setWorkspaceTool] = useState('');
   const [route, setRoute] = useState(window.location.pathname || '/generator');
   const [density, setDensity] = useState(localStorage.getItem('cinematic-density') || 'comfortable');
+  const [theme, setTheme] = useState(localStorage.getItem('cinematic-theme') || 'dark');
   const [notice, setNotice] = useState(null);
   const [progress, setProgress] = useState(0);
   const [selectedLayer, setSelectedLayer] = useState('base');
@@ -134,6 +135,11 @@ function App() {
     applyRoute(routes[window.location.pathname] ? window.location.pathname : '/generator');
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('cinematic-theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     document.documentElement.dataset.density = density;
@@ -730,7 +736,7 @@ function App() {
     ['assistant', '/assistant', 'AI Production Help', 'WandSparkles']
   ];
 
-  return <div className={`app-shell density-${density}`}>
+  return <div className={`app-shell density-${density} theme-${theme}`}>
     <aside className="sidebar" aria-label="Primary navigation">
       <div className="brand">
         <div className="brand-mark"><Icon name="Clapperboard" size={20}/></div>
@@ -758,7 +764,8 @@ function App() {
       </div>
     </header>
 
-    {showSettings && <section className="panel settings appearance-panel"><h2>Appearance</h2><p className="hint">Visual preferences will live here. Provider credentials remain server-side environment configuration and are never exposed as user-editable workspace fields.</p><label>Interface density<select value={density} onChange={e => setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></section>}
+    {showSettings && <section className="panel settings appearance-panel"><h2>Appearance</h2><p className="hint">Visual preferences will live here. Provider credentials remain server-side environment configuration and are never exposed as user-editable workspace fields.</p><label>Interface density<select value={density} onChange={e => setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+<label>Theme<select value={theme} onChange={e => setTheme(e.target.value)}><option value="dark">Dark</option><option value="light">Light</option></select></label></section>}
 
     {showWorkspaceMenu && <ProjectScreen><section className="panel dashboard-panel">
       <div className="section-head">
@@ -799,7 +806,7 @@ function App() {
       </div>}
     </section>}
 
-    {filmMode && <section className="panel film-workspace">
+    {filmMode && <ProjectScreen route={route}><section className="panel film-workspace" data-screen="project">
       <div className="section-head">
         <div><h2><Icon name="Clapperboard" size={18}/> Normal Film Production Workspace</h2><span className="hint">Plan the film, record real camera takes, track continuity, then bring approved media into the edit.</span></div>
         <span className="tag">PRODUCTION</span>
@@ -927,7 +934,7 @@ function App() {
           </div>}
         </div>}
 
-        {filmTab === 'takes' && <section className="timeline-panel" aria-label="Film timeline">
+        {filmTab === 'takes' && <section className="timeline-panel" aria-label="Film timeline" data-screen="timeline">
           <div className="timeline-head">
             <div><span className="eyebrow">EDIT TIMELINE</span><h3>Selected takes</h3><span className="hint">Each clip is a real project take. Trim, speed, effects and audio settings are applied when rendered.</span></div>
             <div className="timeline-actions"><button className="secondary-button" onClick={exportFilm} disabled={!filmProjectId}>Export review cut</button></div>
@@ -1055,7 +1062,7 @@ function App() {
           </div>
         </div>}
 
-        {filmTab === 'shots' && <TimelineScreen><div id="tabpanel-shots" role="tabpanel" aria-labelledby="tab-shots" className="workspace-grid">
+        {filmTab === 'shots' && <TimelineScreen route={route}><div id="tabpanel-shots" role="tabpanel" aria-labelledby="tab-shots" className="workspace-grid">
           <div>
             <div className="subhead"><strong>Scene builder</strong><button onClick={addFilmScene}>+ Scene</button></div>
             <div className="scene-list">{(filmProject.scenes || []).map(s => <button className={selectedSceneId === s.id ? 'scene-card active' : 'scene-card'} key={s.id} onClick={() => { setSelectedSceneId(s.id); syncSceneDraft(s); }}><b>Scene {s.number}</b><span>{s.title}</span><small>{s.dramaticBeat || s.description || 'No dramatic beat yet.'}</small></button>)}{!filmProject.scenes?.length && <span className="hint">No scenes yet.</span>}</div>
@@ -1139,7 +1146,7 @@ function App() {
 
         {filmTab === 'continuity' && <div id="tabpanel-continuity" role="tabpanel" aria-labelledby="tab-continuity" className="continuity-board"><div className="subhead"><strong>Continuity board</strong><button onClick={runContinuityCheck}>Run continuity check</button></div><span className="hint">Checks the actual project state: characters, world rules, scene/shot attachment, camera continuity and logged continuity events.</span><div className="continuity-grid"><div><b>{filmProject?.characters?.length || 0}</b><small>Characters with persistent identity</small></div><div><b>{[...new Set((filmProject?.scenes||[]).flatMap(x=>x.props||[]))].length}</b><small>Tracked scene props</small></div><div><b>{(filmProject?.shots||[]).filter(x=>x.sceneId).length}/{filmProject?.shots?.length || 0}</b><small>Shots attached to scenes</small></div><div><b>{filmProject?.continuity?.length || 0}</b><small>Logged continuity events</small></div></div>{continuityReport && <div className="review-result"><strong>{continuityReport.recommendations?.length ? 'Findings' : 'No obvious continuity gaps'}</strong>{(continuityReport.recommendations || []).map((item,i)=><span key={i}>• {item}</span>)}</div>}</div>}
 
-        {filmTab === 'assets' && <LibraryScreen><div id="tabpanel-assets" role="tabpanel" aria-labelledby="tab-assets" className="asset-workspace">
+        {filmTab === 'assets' && <LibraryScreen><LibraryScreen route={route}><div id="tabpanel-assets" role="tabpanel" aria-labelledby="tab-assets" className="asset-workspace" data-screen="library">
           <div className="subhead"><strong>Production media</strong><span className="hint">{filmProject.assets?.length || 0} assets</span></div>
           <div className="asset-import">
             <label>Attach upload to shot
@@ -1224,11 +1231,11 @@ function App() {
         <span>{formatPlan.production_model.stages.length} stages · {formatPlan.story.beats.length} beats · {formatPlan.tasks.visual.length} visual tasks · {formatPlan.tasks.audio.length} audio tasks</span>
         <small>Provider-neutral: the plan describes production requirements first; the media router selects actual workers later.</small>
       </div>}
-    </section>
+    </section></ProjectScreen>
 
     <main id="main-content" tabIndex="-1">
-      <GenerateScreen>
-      <section className="hero-workspace">
+      <GenerateScreen route={route}>
+      <section className="hero-workspace" data-screen="generate">
       <section className="panel composer">
         <div className="section-head"><h2>Generate a shot</h2><span className="status"><i className={generating ? 'busy' : ''}/> {status}</span></div>
         <label>Scene description<textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows="7" placeholder="Describe the shot you want to generate…"/></label>
