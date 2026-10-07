@@ -1,41 +1,17 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request } from '@playwright/test';
 
 test('login → generate → export production flow', async ({ page }) => {
-  page.on('pageerror', error => console.log('PAGE_ERROR', error.stack));
   const suffix = Date.now();
   const email = `e2e-${suffix}@example.test`;
   const password = 'e2e-password';
-  let authenticated = false;
-  let loginRequested = false;
 
-  await page.route('**/api/auth/status', route => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({
-      required: true,
-      mode: 'password-session',
-      registration: true,
-      authenticated: authenticated || loginRequested,
-      user: (authenticated || loginRequested) ? { id: 'e2e-user', email } : null
-    })
-  }));
-  await page.route('**/api/auth/login', route => {
-    loginRequested = true;
-    authenticated = true;
-    return route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({ authenticated: true, user: { id: 'e2e-user', email } })
-    });
+  const api = await request.newContext({ baseURL: 'http://127.0.0.1:8787' });
+  const registration = await api.post('/api/auth/register', {
+    data: { email, password, displayName: 'E2E User' }
   });
-  await page.route('**/api/film/projects', async route => {
-    if (route.request().method() === 'GET') {
-      await route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify({ projects: [{ id: 'e2e-project', name: 'E2E Film', ownerUserId: 'e2e-user', shots: [], takes: [] }] })
-      });
-      return;
-    }
-    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ project: { id: 'e2e-project', name: 'E2E Film' } }) });
-  });
+  expect(registration.ok()).toBeTruthy();
+  await api.post('/api/auth/logout');
+
   await page.route('**/api/providers*', route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ providers: [{ id: 'huggingface-ltx', configured: true, health: { ok: true } }] })
@@ -58,18 +34,17 @@ test('login → generate → export production flow', async ({ page }) => {
     body: JSON.stringify({ export: { output: '/output/e2e-export.mp4' } })
   }));
 
-  await page.context().clearCookies();
   await page.goto('/');
   await expect(page.getByPlaceholder('Email address')).toBeVisible();
   await page.getByPlaceholder('Email address').fill(email);
   await page.getByPlaceholder('Password (8+ characters)').fill(password);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('/api/auth/login') && response.status() === 200),
+    page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  ]);
 
-  const generateScreen = page.locator('section.screen-generate');
-  await expect(generateScreen.getByText('Generate a shot')).toBeVisible();
-  console.log('GENERATOR_TEXTAREA_COUNTS', await page.locator('textarea').count(), await generateScreen.locator('textarea').count());
-  console.log('GENERATOR_SCREEN_HTML', (await generateScreen.innerHTML()).slice(0, 4000));
-  const shotPrompt = generateScreen.locator('textarea').first();
+  await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
+  const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
   await shotPrompt.fill('A cinematic test shot');
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
@@ -77,4 +52,5 @@ test('login → generate → export production flow', async ({ page }) => {
 
   await page.getByRole('button', { name: /Export/i }).first().click();
   await expect(page.getByText('Film export ready')).toBeVisible();
+  await api.dispose();
 });
