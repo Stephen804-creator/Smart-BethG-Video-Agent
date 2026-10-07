@@ -160,6 +160,12 @@ export async function initDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+    CREATE TABLE IF NOT EXISTS revoked_sessions (
+      session_id TEXT PRIMARY KEY,
+      user_id TEXT,
+      revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_revoked_sessions_user ON revoked_sessions(user_id);
     ALTER TABLE app_users ADD COLUMN IF NOT EXISTS sessions_revoked_at TIMESTAMPTZ;
     ALTER TABLE app_users ADD COLUMN IF NOT EXISTS mfa_secret TEXT;
     ALTER TABLE app_users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE;
@@ -602,4 +608,18 @@ export async function updateUserPassword(userId, passwordHash) {
   if (!db || !userId) return false;
   await db.query('UPDATE app_users SET password_hash=$2, sessions_revoked_at=NOW() WHERE id=$1', [userId, passwordHash]);
   return true;
+}
+
+export async function revokeSession(sessionId, userId = null) {
+  const db = getPool();
+  if (!db || !sessionId) return false;
+  await db.query('INSERT INTO revoked_sessions (session_id,user_id) VALUES ($1,$2) ON CONFLICT (session_id) DO NOTHING', [sessionId, userId || null]);
+  return true;
+}
+
+export async function isSessionRevoked(sessionId) {
+  const db = getPool();
+  if (!db || !sessionId) return false;
+  const result = await db.query('SELECT 1 FROM revoked_sessions WHERE session_id=$1 LIMIT 1', [sessionId]);
+  return result.rowCount > 0;
 }
