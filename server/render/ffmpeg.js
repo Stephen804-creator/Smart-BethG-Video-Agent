@@ -20,14 +20,14 @@ function clamp(value, min, max) {
 }
 
 async function probeDuration(inputPath) {
-  const result = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', inputPath]);
+  const result = await run('ffprobe', ['-protocol_whitelist', 'file,pipe,crypto,data', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', inputPath]);
   const value = Number.parseFloat(result.stdout.trim());
   if (!Number.isFinite(value)) throw new Error('Could not determine source duration.');
   return value;
 }
 async function hasAudioStream(inputPath) {
   try {
-    const result = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', inputPath]);
+    const result = await run('ffprobe', ['-protocol_whitelist', 'file,pipe,crypto,data', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', inputPath]);
     return Boolean(result.stdout.trim());
   } catch {
     return false;
@@ -82,7 +82,7 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
   if (tempo) audioFilters.push(tempo);
   if (volume !== 1) audioFilters.push('volume=' + volume.toFixed(3));
 
-  const args = ['-y'];
+  const args = ['-y', '-protocol_whitelist', 'file,pipe,crypto,data'];
   if (trimIn > 0) args.push('-ss', String(trimIn));
   args.push('-i', inputPath);
   if (trimOut > 0 && trimOut > trimIn) args.push('-t', String(trimOut - trimIn));
@@ -133,7 +133,7 @@ export async function renderTimeline({ clips = [], outputDir }) {
     const normalizedPath = path.join(outputDir, 'timeline-normalized-' + crypto.randomUUID() + '.mp4');
     const audio = await hasAudioStream(item.outputPath);
     const normalizeArgs = [
-      '-y', '-i', item.outputPath,
+      '-y', '-protocol_whitelist', 'file,pipe,crypto,data', '-i', item.outputPath,
       ...(audio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']),
       '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p',
       '-map', '0:v:0',
@@ -151,7 +151,7 @@ export async function renderTimeline({ clips = [], outputDir }) {
   const filename = 'export-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8) + '.mp4';
   const outputPath = path.join(outputDir, filename);
   try {
-    await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', outputPath]);
+    await run('ffmpeg', ['-y', '-protocol_whitelist', 'file,pipe,crypto,data', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', outputPath]);
   } finally {
     try { fs.unlinkSync(listFile); } catch {}
     for (const file of normalized) {
