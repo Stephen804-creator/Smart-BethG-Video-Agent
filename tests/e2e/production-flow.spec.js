@@ -44,14 +44,11 @@ test('login → generate → export production flow', async ({ page }) => {
     });
   });
 
-  await page.route('**/api/jobs/**', route => {
-    jobEventsSeen = true;
-    return route.fulfill({
-      status: 200,
-      contentType: 'text/event-stream',
-      body: `event: job\ndata: {"id":"e2e-job-1","status":"completed","result":{"videoUrl":"/output/e2e.mp4","generation":{"id":"e2e-generation","output":"/output/e2e.mp4","provider":"test","model":"test-model","mode":"text-to-video","duration":4}}}\n\n`
-    });
-  });
+  await page.route('**/api/jobs/e2e-job-1/events', route => route.fulfill({
+    status: 404,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'stream unavailable in fixture' })
+  }));
 
   await page.route('**/api/jobs/e2e-job-1', route => route.fulfill({
     status: 200,
