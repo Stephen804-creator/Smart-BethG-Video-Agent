@@ -29,7 +29,7 @@ import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
 import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, getFilmProjectFromDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, getGenerationFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase, revokeUserSessions, updateUserMfa, createPasswordResetToken, consumePasswordResetToken, updateUserPassword } from './database.js';
 import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, isSessionActive, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie, revokeCurrentSession, hashPassword, verifyPassword, randomBase32Secret, verifyTotp, buildTotpUri, encryptSecret, decryptSecret } from './security.js';
-import { assertSafeComfyUrl } from './security/outbound.js';
+import { assertSafeComfyUrl, fetchSafeExternalMedia } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
 import { canonicalOutputUri, resolveMediaPath } from './media/storage.js';
 
@@ -471,22 +471,11 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
 
   const video = getVideoResult(finalData);
   if (!video?.url) throw new Error('LTX returned a result, but no downloadable video URL was provided.');
-  const downloadController = new AbortController();
-  const downloadTimer = setTimeout(() => downloadController.abort(), 120_000);
-  let response;
-  try {
-    response = await fetch(video.url, { signal: signal || downloadController.signal });
-  } catch (error) {
-    if (error?.name === 'AbortError') throw new Error('LTX video download timed out after 120 seconds.');
-    throw error;
-  } finally {
-    clearTimeout(downloadTimer);
-  }
-  if (!response.ok) throw new Error(`Could not download generated video (${response.status}).`);
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const filename = `${id}.mp4`;
   const filepath = path.join(outputDir, filename);
-  fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
+  const bytes = await fetchSafeExternalMedia(video.url, { signal, maxBytes: 100 * 1024 * 1024, timeoutMs: 120_000 });
+  fs.writeFileSync(filepath, bytes);
   const actualDuration = await probeDuration(filepath);
   const record = { id, ownerUserId: ownerUserId || null, projectId: projectId || null, sceneId: sceneId || null, shotId: shotId || null, createdAt: new Date().toISOString(), provider: 'huggingface', space, model: 'LTX Video 0.9.8 13B Distilled', mode, prompt, generatedPrompt: shotPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: Number(duration), duration: actualDuration ?? Number(duration), estimatedCostUsd: estimateGenerationCost({ provider: 'huggingface', duration: Number(duration) }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'huggingface', duration: Number(duration) }).source, durationMeasured: actualDuration !== null, ratio, height: dimensions.height, width: dimensions.width, seed, output: `/output/${filename}` };
   const task = normalizeMediaTask({
@@ -509,22 +498,11 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
   const reference = referenceGenerationId ? await findGeneration(referenceGenerationId, ownerUserId) : null;
   const finalPrompt = buildShotPrompt({ prompt: [reference ? 'Preserve the established visual identity from the previous shot.' : '', prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
   const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2', signal });
-  const downloadController = new AbortController();
-  const downloadTimer = setTimeout(() => downloadController.abort(), 120_000);
-  let response;
-  try {
-    response = await fetch(videoUrl, { signal: signal || downloadController.signal });
-  } catch (error) {
-    if (error?.name === 'AbortError') throw new Error('Luma video download timed out after 120 seconds.');
-    throw error;
-  } finally {
-    clearTimeout(downloadTimer);
-  }
-  if (!response.ok) throw new Error(`Could not download Luma video (${response.status}).`);
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const filename = `${id}.mp4`;
   const filepath = path.join(outputDir, filename);
-  fs.writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
+  const bytes = await fetchSafeExternalMedia(videoUrl, { signal, maxBytes: 100 * 1024 * 1024, timeoutMs: 120_000 });
+  fs.writeFileSync(filepath, bytes);
   const actualDuration = await probeDuration(filepath);
   const record = { id, ownerUserId: ownerUserId || null, createdAt: new Date().toISOString(), provider: 'luma', model: generation.model || model, mode: 'text-to-video', prompt, generatedPrompt: finalPrompt, referenceGenerationId: reference?.id || null, framing, cameraMovement, lighting, requestedDuration: null, duration: actualDuration, estimatedCostUsd: estimateGenerationCost({ provider: 'luma', duration: actualDuration || 5 }).estimatedUsd, costSource: estimateGenerationCost({ provider: 'luma', duration: actualDuration || 5 }).source, durationMeasured: actualDuration !== null, ratio, width: null, height: null, providerGenerationId: generation.id, output: `/output/${filename}` };
   const task = normalizeMediaTask({
