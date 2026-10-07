@@ -246,10 +246,10 @@ function App() {
 
     const consume = (chunk) => {
       buffer += decoder.decode(chunk, { stream: true });
-      const events = buffer.split(/\\n\\n/);
+      const events = buffer.split(/\n\n/);
       buffer = events.pop() || '';
       for (const event of events) {
-        const dataLine = event.split('\\n').find(line => line.startsWith('data: '));
+        const dataLine = event.split('\n').find(line => line.startsWith('data: '));
         if (!dataLine) continue;
         try {
           const job = JSON.parse(dataLine.slice(6));
