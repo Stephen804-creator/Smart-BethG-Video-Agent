@@ -36,7 +36,7 @@ test('login → generate → export production flow', async ({ page }) => {
     })
   }));
 
-  await page.route('**/api/generate', route => {
+  await page.route('**generate*', route => {
     generateRequestSeen = true;
     return route.fulfill({
       status: 202,
