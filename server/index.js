@@ -77,6 +77,8 @@ fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 const allowedOrigins = String(process.env.APP_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(x => x.trim()).filter(Boolean);
+const paidGenerationAllowed = process.env.ALLOW_PAID_GENERATION === 'true';
+const renderJobTimeoutMs = Math.min(Math.max(Number(process.env.RENDER_JOB_TIMEOUT_MS || 10 * 60 * 1000), 30_000), 30 * 60 * 1000);
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -89,7 +91,14 @@ app.use((req, res, next) => {
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '2mb' }));
 app.use('/output', authMiddleware, express.static(outputDir));
-app.use('/assets', authMiddleware, express.static(assetDir));
+app.use('/assets', authMiddleware, (req, res, next) => {
+  const ext = path.extname(req.path).toLowerCase();
+  const allowed = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.mpeg', '.mpg', '.m4v']);
+  if (!allowed.has(ext)) return res.status(404).end();
+  res.setHeader('Content-Disposition', 'inline');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return express.static(assetDir, { fallthrough: false })(req, res, next);
+});
 
 app.get('/api/health', async (req, res) => {
   const database = await getDatabaseStatus();
@@ -215,15 +224,21 @@ app.use('/api', (req, res, next) => {
   return authMiddleware(req, res, () => apiRateLimit(req, res, next));
 });
 
+async function getOwnedProject(projectId, userId) {
+  if (!projectId || !userId || userId === 'admin') return null;
+  if (process.env.DATABASE_URL) {
+    const canonical = await getFilmProjectFromDatabase(projectId, userId);
+    if (canonical) filmStore.replaceProjects([canonical]);
+  }
+  const project = filmStore.getProject(projectId);
+  return project && project.ownerUserId === userId ? project : null;
+}
+
 async function requireProjectAccess(req, res, next) {
   try {
     const userId = getSessionUserId(req);
     if (!userId || req.authMethod === 'bearer') return res.status(401).json({ error: 'A user session is required for this resource.' });
-    if (process.env.DATABASE_URL) {
-      const canonical = await getFilmProjectFromDatabase(req.params.projectId, userId);
-      if (canonical) filmStore.replaceProjects([canonical]);
-    }
-    const project = filmStore.getProject(req.params.projectId);
+    const project = await getOwnedProject(req.params.projectId, userId);
     if (!project || project.ownerUserId !== userId) return res.status(404).json({ error: 'Film project not found.' });
     req.filmProject = project;
     next();
@@ -580,7 +595,7 @@ async function executeCanonicalGeneration(input = {}) {
   const cameraMovement = input.cameraMovement || input.metadata?.cameraMovement || 'slow push-in';
   const lighting = input.lighting || input.metadata?.lighting || 'natural cinematic';
   const referenceGenerationId = input.referenceGenerationId || input.continuity?.referenceGenerationId || null;
-  const allowPaid = input.allowPaid === true;
+  const allowPaid = paidGenerationAllowed;
   let selectedProvider = requestedProvider;
   if (!selectedProvider || selectedProvider === 'auto') {
     const settings = readSettings();
@@ -1200,6 +1215,11 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
   try {
     const graph = validateProductionGraphInput(req.body || {});
     const ownerUserId = getSessionUserId(req);
+    const project = await getOwnedProject(graph.project_id, ownerUserId);
+    if (!project) return res.status(404).json({ error: 'Film project not found.' });
+    for (const node of graph.nodes || []) {
+      if (node.shot_id && !(project.shots || []).some(shot => shot.id === node.shot_id)) return res.status(404).json({ error: 'Production graph references a shot outside this project.' });
+    }
     if (!ownerUserId) return res.status(401).json({ error: 'A user session is required for production execution.' });
     const payload = {
       graph,
@@ -1264,7 +1284,7 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
     validateMediaTask(task);
     const ownerUserId = getSessionUserId(req);
     if (!ownerUserId) return res.status(401).json({ error: 'A user session is required for generation.' });
-    const payload = { ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId };
+    const payload = { ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: paidGenerationAllowed, ownerUserId };
     const job = generationQueue.enqueue('media-generation', signal => executeCanonicalGeneration({ ...payload, signal }), { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
@@ -1283,7 +1303,7 @@ app.get('/api/providers', async (req, res) => {
       : { ...provider, health: provider.configured ? { ok: true } : { ok: false, detail: 'Not configured.' } }
   );
   const task = String(req.query.task || 'text-to-video');
-  const allowPaid = req.query.allowPaid !== 'false';
+  const allowPaid = paidGenerationAllowed;
   const preferFree = req.query.preferFree === 'true';
   const preferLocal = req.query.preferLocal === 'true';
   const providerId = req.query.providerId ? String(req.query.providerId) : '';
@@ -1327,7 +1347,10 @@ app.post('/api/generate', generationRateLimit, async (req, res) => {
     const input = validateGenerateInput(req.body || {});
     const ownerUserId = getSessionUserId(req);
     if (!ownerUserId) return res.status(401).json({ error: 'A user session is required for generation.' });
-    const payload = { ...input, ownerUserId };
+    const project = input.projectId ? await getOwnedProject(String(input.projectId), ownerUserId) : null;
+    if (input.projectId && !project) return res.status(404).json({ error: 'Film project not found.' });
+    if (input.shotId && (!project || !(project.shots || []).some(shot => shot.id === input.shotId))) return res.status(404).json({ error: 'Shot not found in this project.' });
+    const payload = { ...input, allowPaid: paidGenerationAllowed, ownerUserId };
     const job = generationQueue.enqueue('video-generation', signal => executeCanonicalGeneration({ ...payload, signal }), { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
