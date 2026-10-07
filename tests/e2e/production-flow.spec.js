@@ -67,6 +67,8 @@ test('login → generate → export production flow', async ({ page }) => {
 
   const generateScreen = page.locator('section.screen-generate');
   await expect(generateScreen.getByText('Generate a shot')).toBeVisible();
+  console.log('GENERATOR_TEXTAREA_COUNTS', await page.locator('textarea').count(), await generateScreen.locator('textarea').count());
+  console.log('GENERATOR_SCREEN_HTML', (await generateScreen.innerHTML()).slice(0, 4000));
   const shotPrompt = generateScreen.locator('textarea').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
   await shotPrompt.fill('A cinematic test shot');
