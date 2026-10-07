@@ -75,6 +75,15 @@ const apiRateLimit = rateLimitMiddleware({ limit: 120, windowMs: 60 * 1000, keyP
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
+const uploadTmpDir = path.join(dataDir, 'upload-tmp');
+fs.mkdirSync(uploadTmpDir, { recursive: true });
+try {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  for (const name of fs.readdirSync(uploadTmpDir)) {
+    const file = path.join(uploadTmpDir, name);
+    try { if (fs.statSync(file).mtimeMs < cutoff) fs.unlinkSync(file); } catch {}
+  }
+} catch {}
 
 const allowedOrigins = String(process.env.APP_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(x => x.trim()).filter(Boolean);
 const paidGenerationAllowed = process.env.ALLOW_PAID_GENERATION === 'true';
@@ -346,6 +355,24 @@ function getVideoResult(data) {
   if (first && typeof first === 'object' && first.video) return first.video;
   if (first && typeof first === 'object' && (first.url || first.path)) return first;
   return null;
+}
+
+function validateUploadedVideo(filepath) {
+  return new Promise((resolve, reject) => {
+    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file', '-v', 'error', '-show_entries', 'format=format_name', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
+    let output = '';
+    const timer = setTimeout(() => { probe.kill('SIGKILL'); reject(new Error('Uploaded media validation timed out.')); }, 30_000);
+    probe.stdout.on('data', chunk => { output += chunk.toString(); });
+    probe.on('error', error => { clearTimeout(timer); reject(error); });
+    probe.on('close', code => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error('The uploaded file is not a valid supported video.'));
+      const formats = new Set(output.trim().split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
+      const allowed = ['mov','mp4','m4a','3gp','3g2','mj2','matroska','webm','avi','mpeg'];
+      if (!allowed.some(format => formats.has(format))) return reject(new Error('The uploaded file format is not allowed.'));
+      resolve(true);
+    });
+  });
 }
 
 function probeDuration(filepath) {
@@ -892,6 +919,7 @@ app.post('/api/film/projects/:projectId/assets/upload', (req, res, next) => uplo
     const project = filmStore.getProject(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
     if (!req.file) return res.status(400).json({ error: 'A media file is required.' });
+    await validateUploadedVideo(req.file.path);
     stored = await assetStore.saveUploadedFile(req.file);
     const asset = filmStore.addAsset(req.params.projectId, {
       ...stored,
