@@ -140,22 +140,36 @@ app.use('/api', (req, res, next) => {
 
 async function requireProjectAccess(req, res, next) {
   try {
-    const project = filmStore.getProject(req.params.projectId);
-    if (!project) return res.status(404).json({ error: 'Film project not found.' });
     const userId = getSessionUserId(req);
-    if (project.ownerUserId && project.ownerUserId !== userId) {
-      return res.status(404).json({ error: 'Film project not found.' });
+    if (!userId || req.authMethod === 'bearer') return res.status(401).json({ error: 'A user session is required for this resource.' });
+    if (process.env.DATABASE_URL) {
+      const canonical = await getFilmProjectFromDatabase(req.params.projectId, userId);
+      if (canonical) filmStore.replaceProjects([canonical]);
     }
+    const project = filmStore.getProject(req.params.projectId);
+    if (!project || project.ownerUserId !== userId) return res.status(404).json({ error: 'Film project not found.' });
     req.filmProject = project;
     next();
   } catch (error) {
-    res.status(500).json({ error: error?.message || 'Could not verify project access.' });
+    res.status(500).json({ error: 'Could not verify project access.' });
   }
 }
 
-app.use('/api/film/projects/:projectId', requireProjectAccess);
-app.use('/api/projects/:projectId/entities', (req, res, next) => requireProjectAccess(req, res, next));
+function requireUserIdentity(req, res, next) {
+  const userId = getSessionUserId(req);
+  if (!userId || req.authMethod === 'bearer') return res.status(401).json({ error: 'A user session is required for this resource.' });
+  req.authUserId = userId;
+  next();
+}
 
+app.use('/api/film', requireUserIdentity);
+app.use('/api/projects', requireUserIdentity);
+app.use('/api/jobs', requireUserIdentity);
+app.use('/api/generations', requireUserIdentity);
+app.use('/api/production', requireUserIdentity);
+
+app.use('/api/film/projects/:projectId', requireProjectAccess);
+app.use('/api/projects/:projectId', requireProjectAccess);
 
 app.get('/api/jobs/:jobId', (req, res) => {
   const job = generationQueue.ownedGet(req.params.jobId, getSessionUserId(req));
@@ -339,7 +353,7 @@ async function runLtxJob(client, endpoint, payload, timeoutMs = 15 * 60 * 1000, 
 }
 
 async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovement, lighting, referenceGenerationId, ownerUserId, projectId, sceneId, shotId, signal }) {
-  const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
+  const reference = referenceGenerationId ? await findGeneration(referenceGenerationId, ownerUserId) : null;
   const hasVisualReference = Boolean(reference?.output);
   const continuityPrompt = reference ? 'Preserve continuity with the previous shot. Character, clothing, location, lighting and visual identity must remain consistent.' : '';
   const shotPrompt = buildShotPrompt({ prompt: [continuityPrompt, prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
@@ -400,7 +414,7 @@ async function generateWithLtx({ prompt, duration, ratio, framing, cameraMovemen
 async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighting, referenceGenerationId, model, ownerUserId, projectId, sceneId, shotId, signal }) {
   const settings = readSettings();
   const apiKey = settings.lumaApiKey || process.env.LUMAAI_API_KEY || '';
-  const reference = referenceGenerationId ? await findGeneration(referenceGenerationId) : null;
+  const reference = referenceGenerationId ? await findGeneration(referenceGenerationId, ownerUserId) : null;
   const finalPrompt = buildShotPrompt({ prompt: [reference ? 'Preserve the established visual identity from the previous shot.' : '', prompt].filter(Boolean).join(' '), framing, cameraMovement, lighting });
   const { generation, videoUrl } = await generateWithLuma({ apiKey, prompt: finalPrompt, ratio, model: model || settings.lumaModel || 'ray-flash-2', signal });
   const downloadController = new AbortController();
@@ -437,6 +451,7 @@ async function generateLumaShot({ prompt, ratio, framing, cameraMovement, lighti
 async function linkGenerationToFilmShot(input = {}, result = {}) {
   const projectId = input.projectId || input.metadata?.projectId;
   const ownerUserId = input.ownerUserId || input.metadata?.ownerUserId || null;
+  if (!ownerUserId) throw new Error('An authenticated owner is required for generation persistence.');
   const shotId = input.shotId || input.metadata?.shotId;
   if (!projectId || !shotId || !result?.generation) return result;
 
@@ -574,21 +589,7 @@ app.post('/api/film/projects', async (req, res) => {
   catch (error) { res.status(400).json({ error: error?.message || 'Could not create film project.' }); }
 });
 
-app.use('/api/film/projects/:projectId', async (req, res, next) => {
-  try {
-    const userId = getSessionUserId(req);
-    if (process.env.DATABASE_URL) {
-      const canonical = await getFilmProjectFromDatabase(req.params.projectId, userId);
-      if (canonical) filmStore.replaceProjects([canonical]);
-    }
-    const project = filmStore.getProject(req.params.projectId);
-    if (!project || (project.ownerUserId && project.ownerUserId !== userId)) return res.status(404).json({ error: 'Film project not found.' });
-    req.filmProject = project;
-    next();
-  } catch (error) {
-    res.status(503).json({ error: error?.message || 'Film project storage is unavailable.' });
-  }
-});
+
 
 app.get('/api/film/projects/:projectId', async (req, res) => {
   const project = filmStore.getProject(req.params.projectId);
@@ -1112,13 +1113,15 @@ app.post('/api/media/execution-plan', (req, res) => {
 app.post('/api/production/execute', generationRateLimit, async (req, res) => {
   try {
     const graph = validateProductionGraphInput(req.body || {});
+    const ownerUserId = getSessionUserId(req);
+    if (!ownerUserId) return res.status(401).json({ error: 'A user session is required for production execution.' });
     const payload = {
       graph,
       options: {
         allowPaid: req.body?.allowPaid === true,
         preferLocal: req.body?.preferLocal !== false,
         providerId: req.body?.providerId || '',
-        ownerUserId: getSessionUserId(req)
+        ownerUserId
       }
     };
     const job = generationQueue.enqueue('production-execution', async signal => {
@@ -1132,7 +1135,7 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
         readPersistedJobs: projectId => listJobsFromDatabase(payload.options.ownerUserId, 100, projectId)
       });
       return runner.execute(payload.graph, { ...payload.options, signal });
-    }, { ownerUserId: getSessionUserId(req), payload });
+    }, { ownerUserId, payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     const status = error?.statusCode || 500;
@@ -1173,7 +1176,9 @@ app.post('/api/media/generate', generationRateLimit, async (req, res) => {
     const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
-    const payload = { ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId: getSessionUserId(req) };
+    const ownerUserId = getSessionUserId(req);
+    if (!ownerUserId) return res.status(401).json({ error: 'A user session is required for generation.' });
+    const payload = { ...input, operation: task.operation, requirements: task.requirements, metadata: task.metadata, allowPaid: req.body?.allowPaid === true, ownerUserId };
     const job = generationQueue.enqueue('media-generation', signal => executeCanonicalGeneration({ ...payload, signal }), { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
@@ -1234,7 +1239,9 @@ app.get('/api/generations', async (req, res) => {
 app.post('/api/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateGenerateInput(req.body || {});
-    const payload = { ...input, ownerUserId: getSessionUserId(req) };
+    const ownerUserId = getSessionUserId(req);
+    if (!ownerUserId) return res.status(401).json({ error: 'A user session is required for generation.' });
+    const payload = { ...input, ownerUserId };
     const job = generationQueue.enqueue('video-generation', signal => executeCanonicalGeneration({ ...payload, signal }), { ownerUserId: getSessionUserId(req), payload });
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
