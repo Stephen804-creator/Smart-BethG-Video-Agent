@@ -180,6 +180,7 @@ app.post('/api/auth/password-reset/request', authRateLimit, async (req, res) => 
   const generic = { message: 'If the account exists, a password reset message will be sent.' };
   try {
     const user = await getUserByEmail(email);
+    await hashPassword('password-reset-timing-placeholder', '00000000000000000000000000000000');
     if (user && process.env.PASSWORD_RESET_WEBHOOK_URL) {
       const token = crypto.randomBytes(32).toString('base64url');
       const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
