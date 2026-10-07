@@ -194,7 +194,7 @@ export async function saveGenerationToDatabase(record) {
   if (!id) throw new Error('A generation record requires an id.');
   if (dbOwnerId(record.ownerUserId) === null) throw new Error('A persisted generation requires an authenticated owner.');
 
-  await db.query(
+  const result = await db.query(
     `INSERT INTO media_generations
       (id, owner_user_id, project_id, scene_id, shot_id, domain, operation, provider, worker_id, model, workflow, prompt, requirements, sound_plan, output, execution, evaluation, licensing, dataset_id, estimated_cost_usd, actual_cost_usd)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
@@ -204,7 +204,9 @@ export async function saveGenerationToDatabase(record) {
        evaluation=EXCLUDED.evaluation,
        dataset_id=COALESCE(EXCLUDED.dataset_id, media_generations.dataset_id),
        estimated_cost_usd=COALESCE(EXCLUDED.estimated_cost_usd, media_generations.estimated_cost_usd),
-       actual_cost_usd=COALESCE(EXCLUDED.actual_cost_usd, media_generations.actual_cost_usd)`,
+       actual_cost_usd=COALESCE(EXCLUDED.actual_cost_usd, media_generations.actual_cost_usd)
+     WHERE media_generations.owner_user_id = EXCLUDED.owner_user_id
+     RETURNING id`,
     [
       id, dbOwnerId(record.ownerUserId), record.project || record.projectId || null, record.scene || record.sceneId || null, record.shot || record.shotId || null,
       task.domain || record.domain || 'video', task.operation || record.operation || 'text-to-video',
@@ -218,6 +220,7 @@ export async function saveGenerationToDatabase(record) {
       record.execution?.actual_cost_usd ?? record.actual_cost_usd ?? null
     ]
   );
+  if (result.rowCount !== 1) throw new Error('Generation ownership conflict.');
 
   for (const id of record.knowledge_refs || []) {
     await db.query(
