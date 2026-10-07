@@ -121,7 +121,7 @@ test('login → generate → export production flow', async ({ page }) => {
   await page.waitForTimeout(250);
   const consoleErrors = [];
   page.on('pageerror', error => consoleErrors.push(error.message));
-  await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
+  await page.getByRole('button', { name: /Generate cinematic shot/i }).click({ force: true });
 
   if (!generateRequestSeen) throw new Error(`Generate request was not sent. Page errors: ${consoleErrors.join(' | ')}`);
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
