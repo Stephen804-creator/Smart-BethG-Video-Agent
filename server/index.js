@@ -1224,7 +1224,7 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
     const payload = {
       graph,
       options: {
-        allowPaid: req.body?.allowPaid === true,
+        allowPaid: paidGenerationAllowed,
         preferLocal: req.body?.preferLocal !== false,
         providerId: req.body?.providerId || '',
         ownerUserId
@@ -1250,6 +1250,8 @@ app.post('/api/production/execute', generationRateLimit, async (req, res) => {
 });
 
 app.get('/api/production/jobs/:projectId', async (req, res) => {
+  const project = await getOwnedProject(req.params.projectId, getSessionUserId(req));
+  if (!project) return res.status(404).json({ error: 'Film project not found.' });
   const runner = createProductionRunner({
     jobsFile,
     executeTask: executeCanonicalGeneration,
