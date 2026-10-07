@@ -10,6 +10,8 @@ test('login → generate → export production flow', async ({ page }) => {
     data: { email, password, displayName: 'E2E User' }
   });
   expect(registration.ok()).toBeTruthy();
+  const login = await api.post('/api/auth/login', { data: { email, password } });
+  expect(login.status()).toBe(200);
   const projectResponse = await api.post('/api/film/projects', { data: { title: 'E2E Film' } });
   expect(projectResponse.status()).toBe(201);
   const projectBody = await projectResponse.json();
@@ -44,11 +46,11 @@ test('login → generate → export production flow', async ({ page }) => {
     });
   });
 
-  await page.route('**/api/jobs/e2e-job-1/events', route => route.fulfill({
+  await page.route('**/api/jobs/e2e-job-1/events', route => { jobEventsSeen = true; return route.fulfill({
     status: 404,
     contentType: 'application/json',
     body: JSON.stringify({ error: 'stream unavailable in fixture' })
-  }));
+  }); });
 
   await page.route('**/api/jobs/e2e-job-1', route => route.fulfill({
     status: 200,
