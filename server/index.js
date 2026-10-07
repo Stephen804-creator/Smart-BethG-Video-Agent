@@ -109,30 +109,102 @@ app.post('/api/auth/register', authRateLimit, async (req, res) => {
     const displayName = String(req.body?.displayName || '').trim();
     if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 8) return res.status(400).json({ error: 'Registration details are invalid.' });
     const existing = await getUserByEmail(email);
-    await hashPassword(password);
-    if (!existing) await createUser({ email, passwordHash: await hashPassword(password), displayName });
+    const passwordHash = await hashPassword(password);
+    if (!existing) await createUser({ email, passwordHash, displayName });
     res.status(202).json({ message: 'If registration is available, you can sign in with the account details provided.' });
   } catch (error) {
-    res.status(400).json({ error: error?.message || 'Could not create account.' });
+    res.status(400).json({ error: 'Could not complete registration.' });
   }
 });
 
 app.post('/api/auth/login', authRateLimit, async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const supplied = String(req.body?.password || '');
-  if (email && process.env.DATABASE_URL) {
+  if (process.env.DATABASE_URL) {
     const user = await getUserByEmail(email);
-    if (!user || !verifyPassword(supplied, user.password_hash)) return res.status(401).json({ error: 'Invalid email or password.' });
+    const passwordValid = user ? await verifyPassword(supplied, user.password_hash) : await hashPassword(supplied, '00000000000000000000000000000000');
+    if (!user || !passwordValid) return res.status(401).json({ error: 'Invalid email or password.' });
+    if (user.mfa_enabled) {
+      const secret = decryptSecret(user.mfa_secret);
+      if (!secret || !verifyTotp(secret, req.body?.mfaCode)) return res.status(401).json({ error: 'MFA verification required.', code: 'MFA_REQUIRED' });
+    }
     setSessionCookie(res, user.id);
-    return res.json({ authenticated: true, user: { id: user.id, email: user.email, displayName: user.display_name } });
+    return res.json({ authenticated: true, user: { id: user.id, email: user.email, displayName: user.display_name, mfaEnabled: Boolean(user.mfa_enabled) } });
   }
   if (!process.env.APP_AUTH_PASSWORD) return res.status(503).json({ error: 'Authentication is not configured.' });
-  const expected = String(process.env.APP_AUTH_PASSWORD);
-  if (!secretsMatch(supplied, expected)) return res.status(401).json({ error: 'Invalid password.' });
+  if (!secretsMatch(supplied, String(process.env.APP_AUTH_PASSWORD))) return res.status(401).json({ error: 'Invalid password.' });
   setSessionCookie(res, 'admin');
   res.json({ authenticated: true, user: { id: 'admin', email: null, displayName: 'Administrator' } });
 });
-app.post('/api/auth/logout', async (req, res) => { try { await revokeCurrentSession(req); } catch {} clearSessionCookie(res); res.json({ authenticated: false }); });
+
+app.post('/api/auth/logout', async (req, res) => {
+  try { await revokeCurrentSession(req); } catch {}
+  clearSessionCookie(res);
+  res.json({ authenticated: false });
+});
+
+app.post('/api/auth/mfa/setup', authMiddleware, async (req, res) => {
+  const userId = getSessionUserId(req);
+  if (!userId || userId === 'admin') return res.status(400).json({ error: 'MFA requires a database user account.' });
+  const user = await getUserById(userId);
+  if (!user) return res.status(401).json({ error: 'Authentication required.' });
+  const secret = randomBase32Secret();
+  await updateUserMfa(userId, { secret: encryptSecret(secret), enabled: false });
+  res.json({ secret, otpauthUri: buildTotpUri(secret, user.email), enabled: false });
+});
+
+app.post('/api/auth/mfa/enable', authMiddleware, async (req, res) => {
+  const userId = getSessionUserId(req);
+  const user = userId && userId !== 'admin' ? await getUserById(userId) : null;
+  const secret = decryptSecret(user?.mfa_secret);
+  if (!user || !secret || !verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: 'Invalid MFA code.' });
+  await updateUserMfa(userId, { secret: user.mfa_secret, enabled: true });
+  await revokeUserSessions(userId);
+  res.json({ enabled: true });
+});
+
+app.post('/api/auth/mfa/disable', authMiddleware, async (req, res) => {
+  const userId = getSessionUserId(req);
+  if (!userId || userId === 'admin') return res.status(400).json({ error: 'MFA is unavailable for this account.' });
+  const user = await getUserById(userId);
+  const secret = decryptSecret(user?.mfa_secret);
+  if (!user || !secret || !verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: 'Invalid MFA code.' });
+  await updateUserMfa(userId, { secret: null, enabled: false });
+  await revokeUserSessions(userId);
+  clearSessionCookie(res);
+  res.json({ enabled: false });
+});
+
+app.post('/api/auth/password-reset/request', authRateLimit, async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const generic = { message: 'If the account exists, a password reset message will be sent.' };
+  try {
+    const user = await getUserByEmail(email);
+    if (user && process.env.PASSWORD_RESET_WEBHOOK_URL) {
+      const token = crypto.randomBytes(32).toString('base64url');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      await createPasswordResetToken({ userId: user.id, tokenHash, expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
+      const base = String(process.env.APP_PASSWORD_RESET_URL_BASE || '');
+      if (!base || (process.env.NODE_ENV === 'production' && !base.startsWith('https://'))) throw new Error('Password reset delivery is not configured safely.');
+      const resetUrl = base + (base.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+      const delivery = await fetch(process.env.PASSWORD_RESET_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, resetUrl }) });
+      if (!delivery.ok) throw new Error('Password reset delivery failed.');
+    }
+  } catch {}
+  res.status(202).json(generic);
+});
+
+app.post('/api/auth/password-reset/complete', authRateLimit, async (req, res) => {
+  const token = String(req.body?.token || '');
+  const password = String(req.body?.password || '');
+  if (!token || password.length < 8) return res.status(400).json({ error: 'Reset details are invalid.' });
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const userId = await consumePasswordResetToken(tokenHash);
+  if (!userId) return res.status(400).json({ error: 'The reset token is invalid or expired.' });
+  const passwordHash = await hashPassword(password);
+  await updateUserPassword(userId, passwordHash);
+  res.json({ passwordReset: true });
+});
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
   return authMiddleware(req, res, () => apiRateLimit(req, res, next));
