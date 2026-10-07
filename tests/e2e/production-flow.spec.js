@@ -10,6 +10,10 @@ test('login → generate → export production flow', async ({ page }) => {
     data: { email, password, displayName: 'E2E User' }
   });
   expect(registration.ok()).toBeTruthy();
+  const projectResponse = await api.post('/api/film/projects', { data: { title: 'E2E Film' } });
+  expect(projectResponse.status()).toBe(201);
+  const projectBody = await projectResponse.json();
+  const projectId = projectBody.project.id;
 
   let generateRequestSeen = false;
   let jobEventsSeen = false;
@@ -99,13 +103,6 @@ test('login → generate → export production flow', async ({ page }) => {
     page.waitForResponse(response => response.url().endsWith('/api/auth/login') && response.status() === 200),
     page.getByRole('button', { name: 'Sign in', exact: true }).click()
   ]);
-
-  const projectResponse = await page.request.post('/api/film/projects', {
-    data: { title: 'E2E Film' }
-  });
-  expect(projectResponse.status()).toBe(201);
-  const projectBody = await projectResponse.json();
-  const projectId = projectBody.project.id;
 
   await page.goto('/projects');
   await expect(page.getByText('Production dashboard')).toBeVisible({ timeout: 10_000 });
