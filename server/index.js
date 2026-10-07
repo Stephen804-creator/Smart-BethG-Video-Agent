@@ -382,7 +382,7 @@ function validateUploadedVideo(filepath) {
 
 function probeDuration(filepath) {
   return new Promise((resolve) => {
-    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file,pipe,crypto,data', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
+    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
     let output = '';
     probe.stdout.on('data', chunk => { output += chunk.toString(); });
     probe.on('error', () => resolve(null));
@@ -923,7 +923,10 @@ app.post('/api/film/projects/:projectId/shots/:shotId/select-take', async (req, 
 });
 
 app.post('/api/film/projects/:projectId/assets/upload', (req, res, next) => upload.single('file')(req, res, err => {
-  if (err) return res.status(400).json({ error: err.message || 'Invalid upload.' });
+  if (err) {
+    if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch {} }
+    return res.status(400).json({ error: err.message || 'Invalid upload.' });
+  }
   next();
 }), async (req, res) => {
   let stored = null;
