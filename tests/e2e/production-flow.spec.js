@@ -25,6 +25,8 @@ test('login → generate → export production flow', async ({ page }) => {
   page.on('request', request => {
     if (request.method() === 'POST' || request.url().includes('/api/generate')) console.log('E2E_REQUEST', request.method(), request.url());
   });
+  page.on('console', message => console.log('BROWSER_CONSOLE', message.type(), message.text()));
+  page.on('pageerror', error => console.log('BROWSER_PAGEERROR', error.message));
 
   await page.route('**/api/providers*', route => route.fulfill({
     status: 200,
