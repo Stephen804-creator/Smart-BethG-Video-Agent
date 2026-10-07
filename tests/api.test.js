@@ -215,3 +215,25 @@ test('outbound URL guard blocks internal endpoints and embedded credentials', { 
   await assert.rejects(() => assertSafeComfyUrl('http://localhost:8188'), /blocked internal hostname/);
   await assert.rejects(() => assertSafeComfyUrl('https://user:password@example.com'), /embedded credentials/);
 });
+
+
+test('paid-provider selection cannot be enabled by a client request', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = 'paid-policy-' + suffix + '@example.test';
+  const password = 'correct-horse-battery-paid';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const response = await agent.post('/api/generate').send({
+    provider: 'luma-ray-flash',
+    prompt: 'Paid policy test',
+    duration: 4,
+    allowPaid: true
+  });
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /Paid provider use is disabled/i);
+});
+
+test('CGNAT addresses are blocked by the outbound guard', { skip: !enabled }, async () => {
+  await assert.rejects(() => assertSafeComfyUrl('http://100.64.0.1:8188'), /private or internal network/);
+});
