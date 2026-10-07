@@ -35,6 +35,9 @@ export async function initDatabase() {
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       display_name TEXT NOT NULL DEFAULT '',
+      sessions_revoked_at TIMESTAMPTZ,
+      mfa_secret TEXT,
+      mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -147,6 +150,19 @@ export async function initDatabase() {
       knowledge_id TEXT NOT NULL,
       PRIMARY KEY (generation_id, knowledge_id)
     );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS sessions_revoked_at TIMESTAMPTZ;
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS mfa_secret TEXT;
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
   return { enabled: true };
@@ -170,6 +186,7 @@ export async function saveGenerationToDatabase(record) {
   const evaluation = record.evaluation || record.qualityControl || {};
   const id = record.id || record.dataset_id;
   if (!id) throw new Error('A generation record requires an id.');
+  if (dbOwnerId(record.ownerUserId) === null) throw new Error('A persisted generation requires an authenticated owner.');
 
   await db.query(
     `INSERT INTO media_generations
@@ -350,7 +367,7 @@ export async function getFilmProjectFromDatabase(projectId, ownerUserId = null) 
   if (!db || !projectId) return null;
   const result = ownerUserId
     ? await db.query(
-        'SELECT metadata FROM media_projects WHERE id=$1 AND (owner_user_id=$2 OR owner_user_id IS NULL) LIMIT 1',
+        'SELECT metadata FROM media_projects WHERE id=$1 AND owner_user_id=$2 LIMIT 1',
         [projectId, ownerUserId]
       )
     : await db.query('SELECT metadata FROM media_projects WHERE id=$1 LIMIT 1', [projectId]);
@@ -361,7 +378,7 @@ export async function listFilmProjectsFromDatabase(ownerUserId = null) {
   const db = getPool();
   if (!db) return [];
   const result = ownerUserId
-    ? await db.query('SELECT metadata FROM media_projects WHERE owner_user_id=$1 OR owner_user_id IS NULL ORDER BY updated_at DESC, created_at DESC', [ownerUserId])
+    ? await db.query('SELECT metadata FROM media_projects WHERE owner_user_id=$1 ORDER BY updated_at DESC, created_at DESC', [ownerUserId])
     : await db.query('SELECT metadata FROM media_projects ORDER BY updated_at DESC, created_at DESC');
   return result.rows.map(row => row.metadata).filter(project => project && project.id);
 }
@@ -371,7 +388,7 @@ export async function getGenerationFromDatabase(id, ownerUserId = null) {
   const db = getPool();
   if (!db || !id) return null;
   const result = ownerUserId
-    ? await db.query('SELECT * FROM media_generations WHERE id=$1 AND (owner_user_id=$2 OR owner_user_id IS NULL) LIMIT 1', [id, ownerUserId])
+    ? await db.query('SELECT * FROM media_generations WHERE id=$1 AND owner_user_id=$2 LIMIT 1', [id, ownerUserId])
     : await db.query('SELECT * FROM media_generations WHERE id=$1 LIMIT 1', [id]);
   return result.rows[0] || null;
 }
@@ -381,7 +398,7 @@ export async function listGenerationsFromDatabase(limit = 100, ownerUserId = nul
   if (!db) return [];
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
   const result = ownerUserId
-    ? await db.query('SELECT * FROM media_generations WHERE owner_user_id=$1 OR owner_user_id IS NULL ORDER BY created_at DESC LIMIT $2', [ownerUserId, safeLimit])
+    ? await db.query('SELECT * FROM media_generations WHERE owner_user_id=$1 ORDER BY created_at DESC LIMIT $2', [ownerUserId, safeLimit])
     : await db.query('SELECT * FROM media_generations ORDER BY created_at DESC LIMIT $1', [safeLimit]);
   return result.rows;
 }
@@ -408,7 +425,7 @@ export async function getUserByEmail(email) {
 export async function getUserById(id) {
   const db = getPool();
   if (!db || !id) return null;
-  const result = await db.query('SELECT id,email,display_name,created_at FROM app_users WHERE id=$1 LIMIT 1', [id]);
+  const result = await db.query('SELECT id,email,display_name,sessions_revoked_at,mfa_secret,mfa_enabled,created_at FROM app_users WHERE id=$1 LIMIT 1', [id]);
   return result.rows[0] || null;
 }
 
@@ -416,6 +433,7 @@ export async function getUserById(id) {
 export async function saveJobToDatabase(job) {
   const db = getPool();
   if (!db || !job?.id) return false;
+  if (dbOwnerId(job.ownerUserId) === null) throw new Error('A persisted job requires an authenticated owner.');
   await db.query(
     `INSERT INTO media_jobs
       (id, owner_user_id, type, status, created_at, started_at, completed_at, cancelled_at, attempts, retry_of, result, error, payload)
@@ -520,7 +538,7 @@ export async function recoverableJobsFromDatabase(ownerUserId = null, limit = 10
   const result = ownerUserId
     ? await db.query(
         `SELECT * FROM media_jobs
-         WHERE status='queued' AND (owner_user_id=$1 OR owner_user_id IS NULL)
+         WHERE status='queued' AND owner_user_id=$1
          ORDER BY created_at ASC LIMIT $2`,
         [ownerUserId, safeLimit]
       )
@@ -548,4 +566,41 @@ export async function listJobsFromDatabase(ownerUserId = null, limit = 100, proj
       ? await db.query("SELECT * FROM media_jobs WHERE result->>'project_id'=$1 ORDER BY created_at DESC LIMIT $2", [projectId, safeLimit])
       : await db.query('SELECT * FROM media_jobs ORDER BY created_at DESC LIMIT $1', [safeLimit]);
   return result.rows;
+}
+
+
+export async function revokeUserSessions(userId) {
+  const db = getPool();
+  if (!db || !userId || userId === 'admin') return false;
+  await db.query('UPDATE app_users SET sessions_revoked_at=NOW() WHERE id=$1', [userId]);
+  return true;
+}
+
+export async function updateUserMfa(userId, { secret, enabled }) {
+  const db = getPool();
+  if (!db || !userId) return false;
+  await db.query('UPDATE app_users SET mfa_secret=$2, mfa_enabled=$3 WHERE id=$1', [userId, secret || null, Boolean(enabled)]);
+  return true;
+}
+
+export async function createPasswordResetToken({ userId, tokenHash, expiresAt }) {
+  const db = getPool();
+  if (!db) return false;
+  await db.query('UPDATE password_reset_tokens SET used_at=NOW() WHERE user_id=$1 AND used_at IS NULL', [userId]);
+  await db.query('INSERT INTO password_reset_tokens (id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,$4)', ['reset-' + crypto.randomUUID(), userId, tokenHash, expiresAt]);
+  return true;
+}
+
+export async function consumePasswordResetToken(tokenHash) {
+  const db = getPool();
+  if (!db) return null;
+  const result = await db.query('UPDATE password_reset_tokens SET used_at=NOW() WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW() RETURNING user_id', [tokenHash]);
+  return result.rows[0]?.user_id || null;
+}
+
+export async function updateUserPassword(userId, passwordHash) {
+  const db = getPool();
+  if (!db || !userId) return false;
+  await db.query('UPDATE app_users SET password_hash=$2, sessions_revoked_at=NOW() WHERE id=$1', [userId, passwordHash]);
+  return true;
 }
