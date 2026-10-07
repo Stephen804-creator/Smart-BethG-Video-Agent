@@ -138,7 +138,8 @@ export async function revokeCurrentSession(req) {
 }
 
 export function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
 }
 
 export function consumeRateLimit(key, { limit = 60, windowMs = 60_000 } = {}) {
