@@ -64,8 +64,8 @@ test('login → generate → export production flow', async ({ page }) => {
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
   await shotPrompt.fill('A cinematic test shot');
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
-  await expect(page.locator('video')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('Completed')).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText('Completed')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('test-model')).toBeVisible({ timeout: 5_000 });
 
   await page.getByRole('button', { name: 'Export timeline' }).click();
   await expect(page.getByText('Film export ready')).toBeVisible();
