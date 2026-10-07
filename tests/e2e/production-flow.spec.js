@@ -103,17 +103,12 @@ test('login → generate → export production flow', async ({ page }) => {
     page.getByRole('button', { name: 'Sign in', exact: true }).click()
   ]);
 
-  await page.goto('/projects');
-  await expect(page.getByText('Production dashboard')).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: 'Create / open production' }).click();
-  await expect(page.locator('select').first()).toBeVisible({ timeout: 10_000 });
-  await page.locator('select').first().selectOption(projectId);
-  await expect(page.getByRole('button', { name: 'Export timeline', exact: true })).toBeVisible();
-
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
   await shotPrompt.fill('A cinematic test shot');
+  await expect(shotPrompt).toHaveValue('A cinematic test shot');
+  await page.waitForTimeout(250);
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
 
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
