@@ -100,7 +100,7 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
         job.provider = result?.generation?.provider || result?.provider || job.provider;
         job.output = result?.videoUrl || result?.generation?.output || result;
         job.evaluation = result?.qualityControl || null;
-        await save(job);
+        await save(job, optionsOwnerUserId);
       } catch (error) {
         job.status = 'failed';
         job.completed_at = now();
