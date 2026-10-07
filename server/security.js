@@ -1,4 +1,4 @@
-import { consumeRateLimitFromDatabase, getUserById, revokeUserSessions } from './database.js';
+import { consumeRateLimitFromDatabase, getUserById, revokeUserSessions, revokeSession, isSessionRevoked } from './database.js';
 
 import crypto from 'node:crypto';
 
@@ -53,12 +53,14 @@ function developmentBypassAllowed() {
 }
 
 export function authConfigured() {
-  return Boolean(process.env.APP_SESSION_SECRET && (process.env.APP_AUTH_PASSWORD || process.env.DATABASE_URL));
+  if (!process.env.APP_SESSION_SECRET) return false;
+  if (process.env.NODE_ENV === 'production') return Boolean(process.env.DATABASE_URL);
+  return Boolean(process.env.APP_AUTH_PASSWORD || process.env.DATABASE_URL);
 }
 
 export function assertAuthConfigured() {
   if (!authConfigured() && !developmentBypassAllowed()) {
-    throw new Error('Authentication is required in production. Set APP_SESSION_SECRET and either APP_AUTH_PASSWORD or DATABASE_URL.');
+    throw new Error('Authentication is required in production. Set APP_SESSION_SECRET and DATABASE_URL.');
   }
 }
 
@@ -121,6 +123,7 @@ export async function isSessionActive(req) {
   const cookies = parseCookies(req.headers.cookie || '');
   const session = verifySessionCookie(cookies[SESSION_COOKIE]);
   if (!session) return false;
+  if (process.env.DATABASE_URL && await isSessionRevoked(session.sessionId)) return false;
   if (session.userId === 'admin' || !process.env.DATABASE_URL) return true;
   const user = await getUserById(session.userId);
   if (!user) return false;
@@ -133,8 +136,11 @@ export function setSessionCookie(res, userId = 'admin') {
 }
 
 export async function revokeCurrentSession(req) {
-  const userId = getSessionUserId(req);
-  if (userId && userId !== 'admin' && process.env.DATABASE_URL) await revokeUserSessions(userId);
+  if (!process.env.DATABASE_URL) return;
+  const cookies = parseCookies(req.headers.cookie || '');
+  const session = verifySessionCookie(cookies[SESSION_COOKIE]);
+  if (!session) return;
+  await revokeSession(session.sessionId, session.userId === 'admin' ? null : session.userId);
 }
 
 export function clearSessionCookie(res) {
@@ -197,6 +203,7 @@ export async function authMiddleware(req, res, next) {
   const cookies = parseCookies(req.headers.cookie || '');
   const session = verifySessionCookie(cookies[SESSION_COOKIE]);
   if (!session) return res.status(401).json({ error: 'Authentication required.' });
+  if (process.env.DATABASE_URL && await isSessionRevoked(session.sessionId)) return res.status(401).json({ error: 'Session has been revoked.' });
   if (session.userId !== 'admin' && process.env.DATABASE_URL) {
     const user = await getUserById(session.userId);
     if (!user || (user.sessions_revoked_at && new Date(user.sessions_revoked_at).getTime() >= session.issuedAt)) {
