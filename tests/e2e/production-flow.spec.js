@@ -48,9 +48,12 @@ test('login → generate → export production flow', async ({ page }) => {
   ]);
 
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
-  const projectResponse = await page.context().request.post('/api/film/projects', { data: { title: 'E2E Film' } });
-  console.log('PROJECT_CREATE', projectResponse.status(), await projectResponse.text());
-  expect(projectResponse.ok()).toBeTruthy();
+  const projectResponse = await page.evaluate(async () => {
+    const response = await fetch('/api/film/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ title: 'E2E Film' }) });
+    return { status: response.status, body: await response.text() };
+  });
+  console.log('PROJECT_CREATE', projectResponse.status, projectResponse.body);
+  expect(projectResponse.status).toBe(201);
   await page.reload();
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
