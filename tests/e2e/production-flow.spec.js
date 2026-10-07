@@ -119,8 +119,11 @@ test('login → generate → export production flow', async ({ page }) => {
   await shotPrompt.fill('A cinematic test shot');
   await expect(shotPrompt).toHaveValue('A cinematic test shot');
   await page.waitForTimeout(250);
+  const consoleErrors = [];
+  page.on('pageerror', error => consoleErrors.push(error.message));
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
 
+  if (!generateRequestSeen) throw new Error(`Generate request was not sent. Page errors: ${consoleErrors.join(' | ')}`);
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => jobEventsSeen, { timeout: 10_000 }).toBe(true);
 
