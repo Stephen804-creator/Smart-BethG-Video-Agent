@@ -2,7 +2,8 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import request from 'supertest';
-import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase } from '../server/database.js';
+import pg from 'pg';
+import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase } from '../server/database.js';
 import { assertSafeComfyUrl } from '../server/security/outbound.js';
 
 const enabled = process.env.RUN_API_TESTS === '1';
@@ -246,6 +247,28 @@ test('project entity events and generation reads are owner-scoped', { skip: !ena
   const projectId = created.body.project.id;
   assert.equal((await userA.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'blue' } })).status, 200);
   assert.equal((await userB.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'red' } })).status, 404);
+});
+
+test('legacy null-owner generations are never readable through owner-scoped queries', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const ownerEmail = `legacy-owner-${suffix}@example.test`;
+  const owner = await createUser({ email: ownerEmail, passwordHash: 'test-hash', displayName: 'Legacy Owner' });
+  const generationId = 'legacy-null-owner-' + suffix;
+  const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: true } });
+  try {
+    await db.query(
+      `INSERT INTO media_generations
+       (id, owner_user_id, domain, operation, prompt, output)
+       VALUES ($1, NULL, 'video', 'text-to-video', 'legacy', $2)`,
+      [generationId, JSON.stringify('/output/legacy.mp4')]
+    );
+    assert.equal(await getGenerationFromDatabase(generationId, owner.id), null);
+    const listed = await listGenerationsFromDatabase(500, owner.id);
+    assert.equal(listed.some(row => row.id === generationId), false);
+  } finally {
+    await db.query('DELETE FROM media_generations WHERE id=$1', [generationId]).catch(() => {});
+    await db.end();
+  }
 });
 
 test('database user records round-trip and remain queryable by owner identity', { skip: !enabled }, async () => {
