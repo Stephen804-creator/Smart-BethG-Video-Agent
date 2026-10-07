@@ -59,6 +59,6 @@ export function mediaUriForPath(filePath, { outputDir, assetDir } = {}) {
   const outputBase = path.resolve(outputDir) + path.sep;
   const assetBase = path.resolve(assetDir) + path.sep;
   if (resolved.startsWith(outputBase)) return '/output/' + path.basename(resolved);
-  if (resolved.startsWith(assetBase)) return '/assets/' + path.basename(resolved);
+  if (resolved.startsWith(assetBase)) return '/media-assets/' + path.basename(resolved);
   return '';
 }
