@@ -5,6 +5,7 @@ function cleanPublicUri(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   if (raw.startsWith('/output/')) return '/output/' + path.basename(raw.slice('/output/'.length));
+  if (raw.startsWith('/media-assets/')) return '/media-assets/' + path.basename(raw.slice('/media-assets/'.length));
   if (raw.startsWith('/assets/')) return '/assets/' + path.basename(raw.slice('/assets/'.length));
   return '';
 }
@@ -29,6 +30,13 @@ export function resolveMediaPath(value, { root, outputDir, assetDir } = {}) {
     return candidate.startsWith(base) ? candidate : null;
   }
 
+  if (publicUri.startsWith('/media-assets/')) {
+    const filename = path.basename(publicUri.slice('/media-assets/'.length));
+    const candidate = path.resolve(assetDir, filename);
+    const base = path.resolve(assetDir) + path.sep;
+    return candidate.startsWith(base) ? candidate : null;
+  }
+
   if (publicUri.startsWith('/assets/')) {
     const filename = path.basename(publicUri.slice('/assets/'.length));
     const candidate = path.resolve(assetDir, filename);
@@ -40,6 +48,8 @@ export function resolveMediaPath(value, { root, outputDir, assetDir } = {}) {
   const outputMarker = normalized.indexOf('/output/');
   if (outputMarker >= 0) return resolveMediaPath(normalized.slice(outputMarker), { root, outputDir, assetDir });
 
+  const mediaAssetMarker = normalized.indexOf('/media-assets/');
+  if (mediaAssetMarker >= 0) return resolveMediaPath(normalized.slice(mediaAssetMarker), { root, outputDir, assetDir });
   const assetMarker = normalized.indexOf('/assets/');
   if (assetMarker >= 0) return resolveMediaPath(normalized.slice(assetMarker), { root, outputDir, assetDir });
 
@@ -59,6 +69,6 @@ export function mediaUriForPath(filePath, { outputDir, assetDir } = {}) {
   const outputBase = path.resolve(outputDir) + path.sep;
   const assetBase = path.resolve(assetDir) + path.sep;
   if (resolved.startsWith(outputBase)) return '/output/' + path.basename(resolved);
-  if (resolved.startsWith(assetBase)) return '/assets/' + path.basename(resolved);
+  if (resolved.startsWith(assetBase)) return '/media-assets/' + path.basename(resolved);
   return '';
 }

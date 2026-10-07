@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'node:crypto';
 import path from 'path';
 import { normalizeMediaTask, validateMediaTask } from '../workers/media-task.js';
 
@@ -8,8 +9,8 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
   if (typeof executeTask !== 'function') throw new Error('The production runner requires the canonical media execution function.');
   fs.mkdirSync(path.dirname(jobsFile), { recursive: true });
 
-  async function save(job) {
-    if (typeof persistJob === 'function') await persistJob({ id: job.job_id, type: 'production-execution', status: job.status, createdAt: job.created_at, startedAt: job.started_at, completedAt: job.completed_at, result: job, error: job.error || null });
+  async function save(job, ownerUserId = null) {
+    if (typeof persistJob === 'function') await persistJob({ id: job.job_id, ownerUserId, type: 'production-execution', status: job.status, createdAt: job.created_at, startedAt: job.started_at, completedAt: job.completed_at, result: job, error: job.error || null });
     return job;
   }
 
@@ -30,6 +31,8 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
   }
 
   async function execute(graph, options = {}) {
+    const optionsOwnerUserId = options.ownerUserId || null;
+    if (!optionsOwnerUserId) throw new Error('An authenticated owner is required for production execution.');
     const projectId = graph.project_id || 'project';
     const execution = {
       schema_version: 'production-run-v3',
@@ -48,7 +51,7 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
       const taskId = node.task_id || node.id;
       const operation = node.operation === 'video-generation' ? 'text-to-video' : node.operation;
       const job = {
-        job_id: projectId + ':' + taskId,
+        job_id: 'production-' + crypto.randomUUID(),
         project_id: projectId,
         task_id: taskId,
         source_node_id: node.id,
@@ -79,12 +82,13 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
         validateMediaTask(task);
         job.status = 'running';
         job.started_at = now();
-        await save(job);
+        await save(job, optionsOwnerUserId);
 
         const result = await executeTask({
           ...task,
           providerId: options.providerId || 'auto',
           allowPaid: options.allowPaid === true,
+          ownerUserId: options.ownerUserId || null,
           projectId,
           sceneId: job.scene_id,
           shotId: job.shot_id,

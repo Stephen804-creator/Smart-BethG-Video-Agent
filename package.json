@@ -9,7 +9,10 @@
     "client": "vite --host 0.0.0.0",
     "build": "vite build --config client/vite.config.js",
     "test": "node --test server/evaluation/*.test.js",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "test:e2e": "playwright test",
+    "test:api": "RUN_API_TESTS=1 node --test tests/api.test.js",
+    "test:render": "node --test server/evaluation/render-export.test.js"
   },
   "dependencies": {
     "@gradio/client": "^2.0.0",
@@ -23,6 +26,11 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^10.0.5",
+    "@playwright/test": "^1.63.0",
+    "supertest": "^7.3.1"
+  },
+  "overrides": {
+    "shell-quote": "^1.12.0"
   }
 }

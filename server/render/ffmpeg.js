@@ -3,15 +3,19 @@ import path from 'path';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
 
-function run(command, args) {
+function run(command, args, timeoutMs = 10 * 60 * 1000) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(command + ' timed out after ' + Math.round(timeoutMs / 1000) + ' seconds.'));
+    }, timeoutMs);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', chunk => { stdout += chunk.toString(); });
     child.stderr.on('data', chunk => { stderr += chunk.toString(); });
-    child.on('error', reject);
-    child.on('close', code => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(command + ' failed with exit code ' + code + '. ' + (stderr.trim() || ''))));
+    child.on('error', error => { clearTimeout(timer); reject(error); });
+    child.on('close', code => { clearTimeout(timer); code === 0 ? resolve({ stdout, stderr }) : reject(new Error(command + ' failed with exit code ' + code + '. ' + (stderr.trim() || ''))); });
   });
 }
 
@@ -20,10 +24,18 @@ function clamp(value, min, max) {
 }
 
 async function probeDuration(inputPath) {
-  const result = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', inputPath]);
+  const result = await run('ffprobe', ['-protocol_whitelist', 'file', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', inputPath]);
   const value = Number.parseFloat(result.stdout.trim());
   if (!Number.isFinite(value)) throw new Error('Could not determine source duration.');
   return value;
+}
+async function hasAudioStream(inputPath) {
+  try {
+    const result = await run('ffprobe', ['-protocol_whitelist', 'file', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', inputPath]);
+    return Boolean(result.stdout.trim());
+  } catch {
+    return false;
+  }
 }
 
 function atempoChain(speed) {
@@ -74,7 +86,7 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
   if (tempo) audioFilters.push(tempo);
   if (volume !== 1) audioFilters.push('volume=' + volume.toFixed(3));
 
-  const args = ['-y'];
+  const args = ['-y', '-protocol_whitelist', 'file'];
   if (trimIn > 0) args.push('-ss', String(trimIn));
   args.push('-i', inputPath);
   if (trimOut > 0 && trimOut > trimIn) args.push('-t', String(trimOut - trimIn));
@@ -111,6 +123,7 @@ export async function renderTimeline({ clips = [], outputDir }) {
   if (!Array.isArray(clips) || !clips.length) throw new Error('A timeline requires at least one clip.');
   fs.mkdirSync(outputDir, { recursive: true });
   const rendered = [];
+  const normalized = [];
   for (const clip of clips) {
     const item = await renderShot({
       inputPath: clip.inputPath,
@@ -120,15 +133,34 @@ export async function renderTimeline({ clips = [], outputDir }) {
       audioMix: clip.audioMix || {}
     });
     rendered.push(item);
+
+    const normalizedPath = path.join(outputDir, 'timeline-normalized-' + crypto.randomUUID() + '.mp4');
+    const audio = await hasAudioStream(item.outputPath);
+    const normalizeArgs = [
+      '-y', '-protocol_whitelist', 'file', '-i', item.outputPath,
+      ...(audio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']),
+      '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p',
+      '-map', '0:v:0',
+      ...(audio ? ['-map', '0:a:0'] : ['-map', '1:a:0']),
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+      '-shortest', normalizedPath
+    ];
+    await run('ffmpeg', normalizeArgs);
+    normalized.push(normalizedPath);
   }
+
   const listFile = path.join(outputDir, 'timeline-' + crypto.randomUUID() + '.txt');
-  fs.writeFileSync(listFile, rendered.map(item => "file '" + item.outputPath.replace(/'/g, "'\\''") + "'").join('\n'));
+  fs.writeFileSync(listFile, normalized.map(file => "file '" + file.replace(/'/g, "'\\''") + "'").join('\n'));
   const filename = 'export-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8) + '.mp4';
   const outputPath = path.join(outputDir, filename);
   try {
-    await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', outputPath]);
+    await run('ffmpeg', ['-y', '-protocol_whitelist', 'file', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', outputPath]);
   } finally {
     try { fs.unlinkSync(listFile); } catch {}
+    for (const file of normalized) {
+      try { fs.unlinkSync(file); } catch {}
+    }
   }
   return {
     filename,

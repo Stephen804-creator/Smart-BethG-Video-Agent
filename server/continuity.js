@@ -2,9 +2,9 @@ import path from 'path';
 import { getGenerationFromDatabase } from './database.js';
 import { canonicalOutputUri, resolveMediaPath } from './media/storage.js';
 
-export async function findGeneration(id) {
-  if (!id) return null;
-  const record = await getGenerationFromDatabase(id);
+export async function findGeneration(id, ownerUserId = null) {
+  if (!id || !ownerUserId) return null;
+  const record = await getGenerationFromDatabase(id, ownerUserId);
   if (!record) return null;
 
   const rawOutput = record.output?.asset || record.output?.output || record.output?.uri || record.output || null;
