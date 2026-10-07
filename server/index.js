@@ -27,8 +27,8 @@ import { buildStoryPlan } from './planning/story-planner.js';
 import { createFilmStore } from './film-production.js';
 import { createAssetStore } from './assets.js';
 import { listMediaFormats, getMediaFormat } from './media/formats.js';
-import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, getFilmProjectFromDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase } from './database.js';
-import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie } from './security.js';
+import { initDatabase, saveGenerationToDatabase, getDatabaseStatus, upsertWorldEntities, recordEntityEvent, getEntityState, resolveEntityStateAt, saveFilmProjectToDatabase, getFilmProjectFromDatabase, listFilmProjectsFromDatabase, listGenerationsFromDatabase, getGenerationFromDatabase, saveJobToDatabase, listJobsFromDatabase, createUser, getUserByEmail, getUserById, claimJob, heartbeatJob, releaseJobClaim, recoverableJobsFromDatabase, revokeUserSessions, updateUserMfa, createPasswordResetToken, consumePasswordResetToken, updateUserPassword } from './database.js';
+import { assertAuthConfigured, authMiddleware, clearSessionCookie, getPublicAuthStatus, isAuthenticated, isSessionActive, getSessionUserId, rateLimitMiddleware, secretsMatch, setSessionCookie, revokeCurrentSession, hashPassword, verifyPassword, randomBase32Secret, verifyTotp, buildTotpUri, encryptSecret, decryptSecret } from './security.js';
 import { assertSafeComfyUrl } from './security/outbound.js';
 import { renderShot, renderTimeline } from './render/ffmpeg.js';
 import { canonicalOutputUri, resolveMediaPath } from './media/storage.js';
@@ -36,6 +36,8 @@ import { canonicalOutputUri, resolveMediaPath } from './media/storage.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const app = express();
+const configuredTrustProxy = process.env.APP_TRUST_PROXY === 'false' ? false : Number(process.env.APP_TRUST_PROXY || (process.env.NODE_ENV === 'production' ? 1 : 0));
+app.set('trust proxy', configuredTrustProxy);
 const port = Number(process.env.PORT || 8787);
 const outputDir = path.join(root, 'output');
 const dataDir = path.join(root, 'data');
@@ -46,7 +48,17 @@ const filmStore = createFilmStore(path.join(dataDir, 'film-projects.json'));
 const filmMutationMethods = ['createProject','updateProject','updateStory','addCharacter','updateCharacter','updateWorld','addScene','updateScene','addShot','updateShot','reorderScene','reorderShot','addTake','selectTake','addAsset','updateAsset','attachAssetToShot','attachAssetToTake','addContinuityEvent'];
 const assetDir = path.join(dataDir, 'assets');
 const assetStore = createAssetStore({ rootDir: assetDir });
-const upload = multer({ dest: path.join(dataDir, 'upload-tmp'), limits: { fileSize: 500 * 1024 * 1024 } });
+const upload = multer({
+  dest: path.join(dataDir, 'upload-tmp'),
+  limits: { fileSize: 500 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const allowedMime = new Set(['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska', 'video/x-msvideo', 'video/mpeg']);
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const allowedExt = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.mpeg', '.mpg', '.m4v']);
+    if (!allowedMime.has(String(file.mimetype || '').toLowerCase()) || !allowedExt.has(ext)) return cb(new Error('Unsupported media type. Upload a permitted video format.'));
+    cb(null, true);
+  }
+});
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
 const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
 const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
@@ -65,6 +77,15 @@ fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 const allowedOrigins = String(process.env.APP_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(x => x.trim()).filter(Boolean);
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:");
+  if (process.env.NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
+  next();
+});
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '2mb' }));
 app.use('/output', authMiddleware, express.static(outputDir));
@@ -78,31 +99,19 @@ app.get('/api/health', async (req, res) => {
 app.get('/api/auth/status', async (req, res) => {
   const userId = getSessionUserId(req);
   const user = userId && userId !== 'admin' ? await getUserById(userId) : (userId === 'admin' ? { id: 'admin', email: null, displayName: 'Administrator' } : null);
-  res.json({ ...getPublicAuthStatus(), registration: Boolean(process.env.DATABASE_URL), authenticated: isAuthenticated(req), user });
+  res.json({ ...getPublicAuthStatus(), registration: Boolean(process.env.DATABASE_URL), authenticated: await isSessionActive(req), user: user ? { id: user.id, email: user.email, displayName: user.display_name || user.displayName, mfaEnabled: Boolean(user.mfa_enabled) } : null });
 });
-function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
-  return salt + ':' + hash;
-}
-function verifyPassword(password, stored) {
-  const [salt, expected] = String(stored || '').split(':');
-  if (!salt || !expected) return false;
-  const actual = crypto.scryptSync(String(password), salt, 64).toString('hex');
-  return actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
-}
 
 app.post('/api/auth/register', authRateLimit, async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
     const displayName = String(req.body?.displayName || '').trim();
-    if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'A valid email address is required.' });
-    if (password.length < 8) return res.status(400).json({ error: 'Password must contain at least 8 characters.' });
+    if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 8) return res.status(400).json({ error: 'Registration details are invalid.' });
     const existing = await getUserByEmail(email);
-    if (existing) return res.status(409).json({ error: 'An account with that email already exists.' });
-    const user = await createUser({ email, passwordHash: hashPassword(password), displayName });
-    setSessionCookie(res, user.id);
-    res.status(201).json({ authenticated: true, user });
+    await hashPassword(password);
+    if (!existing) await createUser({ email, passwordHash: await hashPassword(password), displayName });
+    res.status(202).json({ message: 'If registration is available, you can sign in with the account details provided.' });
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not create account.' });
   }
@@ -123,7 +132,7 @@ app.post('/api/auth/login', authRateLimit, async (req, res) => {
   setSessionCookie(res, 'admin');
   res.json({ authenticated: true, user: { id: 'admin', email: null, displayName: 'Administrator' } });
 });
-app.post('/api/auth/logout', (req, res) => { clearSessionCookie(res); res.json({ authenticated: false }); });
+app.post('/api/auth/logout', async (req, res) => { try { await revokeCurrentSession(req); } catch {} clearSessionCookie(res); res.json({ authenticated: false }); });
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
   return authMiddleware(req, res, () => apiRateLimit(req, res, next));
