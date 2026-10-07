@@ -31,6 +31,8 @@ jobs:
       APP_SESSION_SECRET: ci-test-session-secret
       NODE_ENV: test
       APP_AUTH_PASSWORD: e2e-password
+      APP_ACCESS_TOKEN: ci-bearer-token
+      APP_TRUST_PROXY: '1'
       APP_ALLOWED_ORIGINS: http://127.0.0.1:5173
       VITE_API_URL: http://127.0.0.1:8787/api
     steps:
