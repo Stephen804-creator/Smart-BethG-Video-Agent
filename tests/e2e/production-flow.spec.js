@@ -122,25 +122,7 @@ test('login → generate → export production flow', async ({ page }) => {
   await shotPrompt.pressSequentially('A cinematic test shot', { delay: 5 });
   await expect(shotPrompt).toHaveValue('A cinematic test shot');
   await page.waitForTimeout(500);
-  const generateResponse = await page.evaluate(async (projectId) => {
-    const response = await fetch('/api/generate', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: 'huggingface-ltx',
-        prompt: 'A cinematic test shot',
-        duration: 4,
-        ratio: '16:9',
-        framing: 'medium shot',
-        cameraMovement: 'slow push-in',
-        lighting: 'natural cinematic',
-        projectId
-      })
-    });
-    return { status: response.status, body: await response.json() };
-  }, projectId);
-  expect(generateResponse.status).toBe(202);
+  await page.getByRole('button', { name: 'Generate cinematic shot' }).click();
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => jobEventsSeen, { timeout: 10_000 }).toBe(true);
 
