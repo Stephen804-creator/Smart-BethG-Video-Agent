@@ -103,6 +103,11 @@ test('login → generate → export production flow', async ({ page }) => {
     page.getByRole('button', { name: 'Sign in', exact: true }).click()
   ]);
 
+  await page.goto('/projects');
+  await expect(page.getByText('Production dashboard')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Create / open production' }).click();
+  await expect(page.locator('select').first()).toBeVisible({ timeout: 10_000 });
+  await page.locator('select').first().selectOption(projectId);
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
