@@ -22,6 +22,9 @@ test('login → generate → export production flow', async ({ page }) => {
   let generateRequestSeen = false;
   let jobEventsSeen = false;
   let exportRequestSeen = false;
+  page.on('request', request => {
+    if (request.method() === 'POST' || request.url().includes('/api/generate')) console.log('E2E_REQUEST', request.method(), request.url());
+  });
 
   await page.route('**/api/providers*', route => route.fulfill({
     status: 200,
