@@ -188,7 +188,11 @@ app.post('/api/auth/password-reset/request', authRateLimit, async (req, res) => 
       const base = String(process.env.APP_PASSWORD_RESET_URL_BASE || '');
       if (!base || (process.env.NODE_ENV === 'production' && !base.startsWith('https://'))) throw new Error('Password reset delivery is not configured safely.');
       const resetUrl = base + (base.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
-      const delivery = await fetch(process.env.PASSWORD_RESET_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, resetUrl }) });
+      const webhook = String(process.env.PASSWORD_RESET_WEBHOOK_URL);
+      if (process.env.NODE_ENV === 'production' && !webhook.startsWith('https://')) throw new Error('Password reset delivery requires HTTPS in production.');
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      const delivery = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, resetUrl }), signal: controller.signal }).finally(() => clearTimeout(timeout));
       if (!delivery.ok) throw new Error('Password reset delivery failed.');
     }
   } catch {}
