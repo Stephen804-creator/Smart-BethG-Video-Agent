@@ -16,6 +16,7 @@ function hashFile(filePath) {
 function probeMedia(filePath) {
   return new Promise(resolve => {
     const probe = spawn('ffprobe', [
+      '-protocol_whitelist', 'file,pipe,crypto,data',
       '-v', 'error',
       '-show_entries', 'format=duration:stream=index,codec_name,codec_type,width,height,r_frame_rate',
       '-of', 'json',
@@ -66,10 +67,11 @@ export function createAssetStore({ rootDir }) {
     const filename = safeName(file.originalname);
     const destination = path.join(assetDir, filename);
     fs.renameSync(file.path, destination);
-    const metadata = await probeMedia(destination);
-    const sha256 = await hashFile(destination);
-
-    return {
+    try {
+      const metadata = await probeMedia(destination);
+      if (!metadata.available || !metadata.width || !metadata.height || !metadata.duration || metadata.duration <= 0) throw new Error('Uploaded file is not a valid video.');
+      const sha256 = await hashFile(destination);
+      return {
       id: crypto.randomUUID(),
       name: file.originalname || filename,
       filename,
@@ -80,7 +82,11 @@ export function createAssetStore({ rootDir }) {
       sha256,
       ...metadata,
       createdAt: new Date().toISOString()
-    };
+      };
+    } catch (error) {
+      try { fs.unlinkSync(destination); } catch {}
+      throw error;
+    }
   }
 
   return { saveUploadedFile, probeMedia };
