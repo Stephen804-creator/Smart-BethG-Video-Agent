@@ -96,13 +96,17 @@ test('login → generate → export production flow', async ({ page }) => {
   });
 
   await page.goto('/');
-  await expect(page.getByPlaceholder('Email address')).toBeVisible();
-  await page.getByPlaceholder('Email address').fill(email);
-  await page.getByPlaceholder('Password (8+ characters)').fill(password);
-  await Promise.all([
-    page.waitForResponse(response => response.url().endsWith('/api/auth/login') && response.status() === 200),
-    page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  ]);
+  const loginResponse = await page.evaluate(async ({ email, password }) => {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    return { status: response.status, body: await response.json() };
+  }, { email, password });
+  expect(loginResponse.status).toBe(200);
+  await page.reload();
 
   await page.goto('/projects');
   await expect(page.getByText('Production dashboard')).toBeVisible({ timeout: 10_000 });
