@@ -566,6 +566,7 @@ async function linkGenerationToFilmShot(input = {}, result = {}) {
   return result;
 }
 async function executeCanonicalGeneration(input = {}) {
+  if (process.env.DATABASE_URL && !input.ownerUserId) throw new Error('An authenticated owner is required for generation.');
   const requestedProvider = String(input.provider || input.providerId || 'auto');
   const operation = input.operation || 'text-to-video';
   const prompt = String(input.prompt || '').trim();
