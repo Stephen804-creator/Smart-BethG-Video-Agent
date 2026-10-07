@@ -330,7 +330,7 @@ function getVideoResult(data) {
 
 function probeDuration(filepath) {
   return new Promise((resolve) => {
-    const probe = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
+    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file,pipe,crypto,data', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
     let output = '';
     probe.stdout.on('data', chunk => { output += chunk.toString(); });
     probe.on('error', () => resolve(null));
