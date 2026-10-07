@@ -127,6 +127,21 @@ test('registration, login, status and logout work through session cookies', { sk
   assert.equal(login.body.authenticated, true);
 });
 
+test('logout revokes only the current session while leaving another session active', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const email = `session-revoke-${suffix}@example.test`;
+  const password = 'correct-horse-battery-revoke';
+  const agentA = request.agent('http://127.0.0.1:8787');
+  const agentB = request.agent('http://127.0.0.1:8787');
+  assert.equal((await agentA.post('/api/auth/register').send({ email, password })).status, 202);
+  assert.equal((await agentA.post('/api/auth/login').send({ email, password })).status, 200);
+  assert.equal((await agentB.post('/api/auth/login').send({ email, password })).status, 200);
+  assert.equal((await agentB.get('/api/auth/status')).body.authenticated, true);
+  assert.equal((await agentA.post('/api/auth/logout')).status, 200);
+  assert.equal((await agentA.get('/api/auth/status')).body.authenticated, false);
+  assert.equal((await agentB.get('/api/auth/status')).body.authenticated, true);
+});
+
 test('invalid login is rejected without authenticating the session', { skip: !enabled }, async () => {
   const suffix = Date.now();
   const email = `invalid-login-${suffix}@example.test`;
