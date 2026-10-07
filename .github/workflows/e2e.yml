@@ -45,6 +45,6 @@ jobs:
       - name: Refresh lockfile resolutions
         run: npm install --package-lock-only --ignore-scripts
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Run browser flow
         run: npm run test:e2e
