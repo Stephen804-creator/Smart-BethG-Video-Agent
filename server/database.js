@@ -273,7 +273,17 @@ export async function upsertWorldEntities(projectId, entities = []) {
 
 export async function recordEntityEvent(event = {}) {
   const db = getPool();
-  if (!db || !event.entityId || !event.projectId || !event.eventType) return false;
+  if (!db || !event.entityId || !event.projectId || !event.eventType || !event.ownerUserId) return false;
+  const owner = await db.query(
+    'SELECT 1 FROM media_projects WHERE id=$1 AND owner_user_id=$2 LIMIT 1',
+    [event.projectId, event.ownerUserId]
+  );
+  if (owner.rowCount !== 1) throw new Error('Entity event project ownership check failed.');
+  const entity = await db.query(
+    'SELECT 1 FROM media_entities WHERE id=$1 AND project_id=$2 LIMIT 1',
+    [event.entityId, event.projectId]
+  );
+  if (entity.rowCount !== 1) throw new Error('Entity does not belong to the requested project.');
   await db.query(
     `INSERT INTO media_entity_events
       (project_id, scene_id, shot_id, entity_id, event_type, changes)
