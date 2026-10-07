@@ -762,6 +762,7 @@ app.post('/api/film/projects/:projectId/shots/:shotId/reorder', async (req, res)
 });
 
 app.post('/api/film/projects/:projectId/import-generation', async (req, res) => {
+  let stored = null;
   try {
     const project = filmStore.getProject(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
@@ -837,15 +838,17 @@ app.post('/api/film/projects/:projectId/assets/upload', (req, res, next) => uplo
     const project = filmStore.getProject(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
     if (!req.file) return res.status(400).json({ error: 'A media file is required.' });
-    const stored = await assetStore.saveUploadedFile(req.file);
+    stored = await assetStore.saveUploadedFile(req.file);
     const asset = filmStore.addAsset(req.params.projectId, {
       ...stored,
       sceneId: req.body?.sceneId || null,
       shotId: req.body?.shotId || null,
       notes: req.body?.notes || ''
     });
+    if (!asset) throw new Error('Could not persist the uploaded media asset.');
     res.status(201).json({ asset });
   } catch (error) {
+    if (stored?.filename) { try { fs.unlinkSync(path.join(assetDir, stored.filename)); } catch {} }
     res.status(400).json({ error: error?.message || 'Could not ingest media asset.' });
   } finally {
     if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch {} }
