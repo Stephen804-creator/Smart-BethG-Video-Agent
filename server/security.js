@@ -1,9 +1,11 @@
-import { consumeRateLimitFromDatabase } from './database.js';
+import { consumeRateLimitFromDatabase, getUserById, revokeUserSessions } from './database.js';
 
 import crypto from 'node:crypto';
 
 const SESSION_COOKIE = 'cinematic_session';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const MFA_STEP_SECONDS = 30;
+const MFA_DIGITS = 6;
 const buckets = new Map();
 
 function authSecret() {
@@ -43,22 +45,26 @@ function parseCookies(header = '') {
 }
 
 export function createSessionCookie(userId = 'admin') {
-  const expires = Date.now() + SESSION_TTL_MS;
-  const payload = String(userId) + ':' + String(expires);
+  const issuedAt = Date.now();
+  const expires = issuedAt + SESSION_TTL_MS;
+  const sessionId = crypto.randomBytes(18).toString('base64url');
+  const payload = String(userId) + ':' + String(issuedAt) + ':' + String(expires) + ':' + sessionId;
   return payload + '.' + sign(payload);
 }
 
 export function verifySessionCookie(cookie) {
   if (!cookie) return null;
   const [payload, signature] = String(cookie).split('.');
-  const separator = String(payload).lastIndexOf(':');
-  const userId = separator > 0 ? payload.slice(0, separator) : 'admin';
-  const expires = separator > 0 ? payload.slice(separator + 1) : payload;
-  if (!expires || !signature || Number(expires) < Date.now()) return null;
+  const parts = String(payload).split(':');
+  const userId = parts[0] || 'admin';
+  const issuedAt = Number(parts[1]);
+  const expires = Number(parts[2]);
+  const sessionId = parts[3] || '';
+  if (!userId || !Number.isFinite(issuedAt) || !Number.isFinite(expires) || !sessionId || !signature || expires < Date.now()) return null;
   const expected = Buffer.from(sign(payload));
   const actual = Buffer.from(signature);
   if (expected.length !== actual.length) return false;
-  return crypto.timingSafeEqual(expected, actual) ? { userId, expires: Number(expires) } : null;
+  return crypto.timingSafeEqual(expected, actual) ? { userId, issuedAt, expires, sessionId } : null;
 }
 
 export function isAuthenticated(req) {
@@ -75,14 +81,30 @@ export function isAuthenticated(req) {
 }
 
 export function getSessionUserId(req) {
+  if (req.authUserId) return req.authUserId;
   const cookies = parseCookies(req.headers.cookie || '');
   const session = verifySessionCookie(cookies[SESSION_COOKIE]);
   return session?.userId || null;
 }
 
+export async function isSessionActive(req) {
+  const cookies = parseCookies(req.headers.cookie || '');
+  const session = verifySessionCookie(cookies[SESSION_COOKIE]);
+  if (!session) return false;
+  if (session.userId === 'admin' || !process.env.DATABASE_URL) return true;
+  const user = await getUserById(session.userId);
+  if (!user) return false;
+  return !user.sessions_revoked_at || new Date(user.sessions_revoked_at).getTime() < session.issuedAt;
+}
+
 export function setSessionCookie(res, userId = 'admin') {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(createSessionCookie(userId))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure}`);
+}
+
+export async function revokeCurrentSession(req) {
+  const userId = getSessionUserId(req);
+  if (userId && userId !== 'admin' && process.env.DATABASE_URL) await revokeUserSessions(userId);
 }
 
 export function clearSessionCookie(res) {
@@ -125,13 +147,81 @@ export function rateLimitMiddleware({ limit, windowMs, keyPrefix }) {
   };
 }
 
-export function authMiddleware(req, res, next) {
+export async function authMiddleware(req, res, next) {
   if (!authConfigured()) {
     if (developmentBypassAllowed()) return next();
     return res.status(503).json({ error: 'Authentication is not configured on this server.' });
   }
-  if (isAuthenticated(req)) return next();
-  return res.status(401).json({ error: 'Authentication required.' });
+  const auth = String(req.headers.authorization || '');
+  if (auth.startsWith('Bearer ')) {
+    const supplied = auth.slice(7).trim();
+    const expected = process.env.APP_ACCESS_TOKEN || '';
+    if (!expected || supplied.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+    req.authUserId = null;
+    req.authMethod = 'bearer';
+    return next();
+  }
+  const cookies = parseCookies(req.headers.cookie || '');
+  const session = verifySessionCookie(cookies[SESSION_COOKIE]);
+  if (!session) return res.status(401).json({ error: 'Authentication required.' });
+  if (session.userId !== 'admin' && process.env.DATABASE_URL) {
+    const user = await getUserById(session.userId);
+    if (!user || (user.sessions_revoked_at && new Date(user.sessions_revoked_at).getTime() >= session.issuedAt)) {
+      return res.status(401).json({ error: 'Session has expired or been revoked.' });
+    }
+  }
+  req.authUserId = session.userId;
+  req.authMethod = 'session';
+  return next();
+}
+
+export function randomBase32Secret(bytes = 20) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const data = crypto.randomBytes(bytes);
+  let bits = 0; let value = 0; let out = '';
+  for (const byte of data) {
+    value = (value << 8) | byte; bits += 8;
+    while (bits >= 5) { out += alphabet[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits) out += alphabet[(value << (5 - bits)) & 31];
+  return out;
+}
+
+function decodeBase32(secret) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = String(secret || '').replace(/=+$/,'').toUpperCase().replace(/[^A-Z2-7]/g,'');
+  let bits = 0; let value = 0; const out = [];
+  for (const char of clean) {
+    const index = alphabet.indexOf(char); if (index < 0) continue;
+    value = (value << 5) | index; bits += 5;
+    if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  return Buffer.from(out);
+}
+
+export function verifyTotp(secret, supplied, timestamp = Date.now()) {
+  const code = String(supplied || '').replace(/\s+/g, '');
+  if (!/^\d{6}$/.test(code)) return false;
+  const key = decodeBase32(secret);
+  if (!key.length) return false;
+  const counter = Math.floor(timestamp / 1000 / MFA_STEP_SECONDS);
+  for (let offset = -1; offset <= 1; offset += 1) {
+    const buffer = Buffer.alloc(8);
+    buffer.writeBigUInt64BE(BigInt(counter + offset));
+    const digest = crypto.createHmac('sha1', key).update(buffer).digest();
+    const index = digest[digest.length - 1] & 0x0f;
+    const binary = ((digest[index] & 0x7f) << 24) | (digest[index + 1] << 16) | (digest[index + 2] << 8) | digest[index + 3];
+    const expected = String(binary % 10 ** MFA_DIGITS).padStart(MFA_DIGITS, '0');
+    if (secretsMatch(code, expected)) return true;
+  }
+  return false;
+}
+
+export function buildTotpUri(secret, email) {
+  const issuer = 'Smart-BethG';
+  return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(email || 'account')}?secret=${encodeURIComponent(secret)}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 }
 
 export function getPublicAuthStatus() {
