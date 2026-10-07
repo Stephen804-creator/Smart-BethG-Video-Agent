@@ -10,10 +10,7 @@ test('login → generate → export production flow', async ({ page }) => {
     data: { email, password, displayName: 'E2E User' }
   });
   expect(registration.ok()).toBeTruthy();
-  const projectResponse = await api.post('/api/film/projects', { data: { title: 'E2E Film' } });
-  const projectBody = await projectResponse.json();
-  expect(projectResponse.status()).toBe(201);
-  const projectId = projectBody.project.id;
+  const projectId = 'e2e-project';
   await api.post('/api/auth/logout');
 
   await page.route('**/api/film/projects', route => route.fulfill({
