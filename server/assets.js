@@ -77,7 +77,7 @@ export function createAssetStore({ rootDir }) {
       filename,
       mimeType: file.mimetype || 'application/octet-stream',
       size: fs.statSync(destination).size,
-      uri: '/assets/' + filename,
+      uri: '/media-assets/' + filename,
       sourceType: 'uploaded',
       sha256,
       ...metadata,
