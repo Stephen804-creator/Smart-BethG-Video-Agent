@@ -387,20 +387,16 @@ export async function listFilmProjectsFromDatabase(ownerUserId = null) {
 
 export async function getGenerationFromDatabase(id, ownerUserId = null) {
   const db = getPool();
-  if (!db || !id) return null;
-  const result = ownerUserId
-    ? await db.query('SELECT * FROM media_generations WHERE id=$1 AND owner_user_id=$2 LIMIT 1', [id, ownerUserId])
-    : await db.query('SELECT * FROM media_generations WHERE id=$1 LIMIT 1', [id]);
+  if (!db || !id || !ownerUserId || ownerUserId === 'admin') return null;
+  const result = await db.query('SELECT * FROM media_generations WHERE id=$1 AND owner_user_id=$2 LIMIT 1', [id, ownerUserId]);
   return result.rows[0] || null;
 }
 
 export async function listGenerationsFromDatabase(limit = 100, ownerUserId = null) {
   const db = getPool();
-  if (!db) return [];
+  if (!db || !ownerUserId || ownerUserId === 'admin') return [];
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
-  const result = ownerUserId
-    ? await db.query('SELECT * FROM media_generations WHERE owner_user_id=$1 ORDER BY created_at DESC LIMIT $2', [ownerUserId, safeLimit])
-    : await db.query('SELECT * FROM media_generations ORDER BY created_at DESC LIMIT $1', [safeLimit]);
+  const result = await db.query('SELECT * FROM media_generations WHERE owner_user_id=$1 ORDER BY created_at DESC LIMIT $2', [ownerUserId, safeLimit]);
   return result.rows;
 }
 
@@ -448,7 +444,8 @@ export async function saveJobToDatabase(job) {
        retry_of=EXCLUDED.retry_of,
        result=EXCLUDED.result,
        error=EXCLUDED.error,
-       payload=COALESCE(EXCLUDED.payload, media_jobs.payload)`,
+       payload=COALESCE(EXCLUDED.payload, media_jobs.payload)
+     WHERE media_jobs.owner_user_id = EXCLUDED.owner_user_id`,
     [
       job.id, job.ownerUserId || null, job.type || 'job', job.status || 'queued',
       job.createdAt || new Date().toISOString(), job.startedAt || null, job.completedAt || null,
