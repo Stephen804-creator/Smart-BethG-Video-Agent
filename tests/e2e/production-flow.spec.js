@@ -65,9 +65,11 @@ test('login → generate → export production flow', async ({ page }) => {
   await page.getByPlaceholder('Password (8+ characters)').fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-  await expect(page.getByText('Generate a shot')).toBeVisible();
-  await expect(page.getByPlaceholder('Describe the shot you want to generate…')).toBeVisible();
-  await page.getByPlaceholder('Describe the shot you want to generate…').fill('A cinematic test shot');
+  const generateScreen = page.locator('section.screen-generate');
+  await expect(generateScreen.getByText('Generate a shot')).toBeVisible();
+  const shotPrompt = generateScreen.locator('textarea').first();
+  await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
+  await shotPrompt.fill('A cinematic test shot');
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
   await expect(page.getByText('Completed')).toBeVisible({ timeout: 15_000 });
 
