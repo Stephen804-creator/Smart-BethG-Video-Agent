@@ -1,5 +1,6 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import https from 'node:https';
 
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
@@ -52,29 +53,55 @@ export async function assertSafeComfyUrl(rawUrl) {
 
 export async function fetchSafeExternalMedia(rawUrl, { signal, maxBytes = 100 * 1024 * 1024, timeoutMs = 120_000 } = {}) {
   const url = await assertSafeExternalUrl(rawUrl, { requireHttps: true });
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('External media download timed out.')), timeoutMs);
-  const onAbort = () => controller.abort(signal?.reason || new Error('External media download cancelled.'));
-  signal?.addEventListener('abort', onAbort, { once: true });
-  try {
-    const response = await fetch(url, { redirect: 'manual', signal: controller.signal });
-    if (response.status >= 300 && response.status < 400) throw new Error('External media redirects are not allowed.');
-    if (!response.ok) throw new Error('External media download failed (' + response.status + ').');
-    const declared = Number(response.headers.get('content-length') || 0);
-    if (declared > maxBytes) throw new Error('External media exceeds the download size limit.');
-    if (!response.body) throw new Error('External media response has no body.');
-    const reader = response.body.getReader();
-    const chunks = []; let total = 0;
-    while (true) {
-      const part = await reader.read();
-      if (part.done) break;
-      total += part.value.byteLength;
-      if (total > maxBytes) { try { await reader.cancel(); } catch {} throw new Error('External media exceeds the download size limit.'); }
-      chunks.push(Buffer.from(part.value));
-    }
-    return Buffer.concat(chunks, total);
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', onAbort);
-  }
+  const addresses = net.isIP(url.hostname) ? [url.hostname] : (await dns.lookup(url.hostname, { all: true })).map(item => item.address);
+  const address = addresses[0];
+  if (!address || isPrivateIp(address)) throw new Error('External media host resolved to a blocked address.');
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let total = 0;
+    const chunks = [];
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      error ? reject(error) : resolve(value);
+    };
+    const abort = () => request.destroy(signal?.reason || new Error('External media download cancelled.'));
+    const request = https.request(url, {
+      method: 'GET',
+      lookup: (_hostname, _options, callback) => callback(null, address, net.isIP(address)),
+      headers: { 'Accept': 'video/*,application/octet-stream' },
+      timeout: timeoutMs
+    }, response => {
+      if (response.statusCode >= 300 && response.statusCode < 400) {
+        response.resume();
+        return finish(new Error('External media redirects are not allowed.'));
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        response.resume();
+        return finish(new Error('External media download failed (' + response.statusCode + ').'));
+      }
+      const declared = Number(response.headers['content-length'] || 0);
+      if (declared > maxBytes) {
+        response.resume();
+        return finish(new Error('External media exceeds the download size limit.'));
+      }
+      response.on('data', chunk => {
+        total += chunk.length;
+        if (total > maxBytes) {
+          response.destroy(new Error('External media exceeds the download size limit.'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('end', () => finish(null, Buffer.concat(chunks, total)));
+      response.on('error', finish);
+    });
+    const timer = setTimeout(() => request.destroy(new Error('External media download timed out.')), timeoutMs);
+    request.on('timeout', () => request.destroy(new Error('External media download timed out.')));
+    request.on('error', finish);
+    signal?.addEventListener('abort', abort, { once: true });
+    request.end();
+  });
 }
