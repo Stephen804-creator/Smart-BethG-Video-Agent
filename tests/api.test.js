@@ -2,7 +2,7 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import request from 'supertest';
-import { createUser, getUserByEmail, getUserById, getDatabaseStatus } from '../server/database.js';
+import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase } from '../server/database.js';
 import { assertSafeComfyUrl } from '../server/security/outbound.js';
 
 const enabled = process.env.RUN_API_TESTS === '1';
@@ -158,6 +158,24 @@ test('two users cannot read or mutate each other\'s film projects or jobs', { sk
 
   const foreignCancel = await userB.post('/api/jobs/' + jobId + '/cancel');
   assert.equal(foreignCancel.status, 404);
+});
+
+test('generation continuity import cannot cross user ownership', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const userA = request.agent('http://127.0.0.1:8787');
+  const userB = request.agent('http://127.0.0.1:8787');
+  const emailA = `generation-a-${suffix}@example.test`;
+  const emailB = `generation-b-${suffix}@example.test`;
+  await userA.post('/api/auth/register').send({ email: emailA, password: 'correct-horse-battery-1' });
+  await userB.post('/api/auth/register').send({ email: emailB, password: 'correct-horse-battery-2' });
+  await userA.post('/api/auth/login').send({ email: emailA, password: 'correct-horse-battery-1' });
+  await userB.post('/api/auth/login').send({ email: emailB, password: 'correct-horse-battery-2' });
+  const project = await userA.post('/api/film/projects').send({ title: 'Generation Isolation' });
+  const userAId = (await userA.get('/api/auth/status')).body.user.id;
+  const generationId = 'test-generation-' + suffix;
+  await saveGenerationToDatabase({ id: generationId, ownerUserId: userAId, projectId: project.body.project.id, provider: 'test', operation: 'text-to-video', output: '/output/private.mp4', prompt: 'private' });
+  const foreignImport = await userB.post('/api/film/projects/' + project.body.project.id + '/import-generation').send({ generationId });
+  assert.equal(foreignImport.status, 404);
 });
 
 test('project entity events and generation reads are owner-scoped', { skip: !enabled }, async () => {
