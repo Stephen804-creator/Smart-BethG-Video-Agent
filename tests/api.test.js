@@ -59,9 +59,14 @@ test('registration, login, status and logout work through session cookies', { sk
   const agent = request.agent('http://127.0.0.1:8787');
 
   const registered = await agent.post('/api/auth/register').send({ email, password, displayName: 'Auth Test' });
-  assert.equal(registered.status, 201);
-  assert.equal(registered.body.authenticated, true);
-  assert.match(registered.headers['set-cookie']?.join(';') || '', /session=/);
+  assert.equal(registered.status, 202);
+  assert.match(registered.body.message, /sign in/i);
+
+  const initialStatus = await agent.get('/api/auth/status');
+  assert.equal(initialStatus.body.authenticated, false);
+
+  const initialLogin = await agent.post('/api/auth/login').send({ email, password });
+  assert.equal(initialLogin.status, 200);
 
   const status = await agent.get('/api/auth/status');
   assert.equal(status.status, 200);
@@ -107,8 +112,11 @@ test('two users cannot read or mutate each other\'s film projects or jobs', { sk
     password: 'correct-horse-battery-2',
     displayName: 'Isolation B'
   });
-  assert.equal(registerA.status, 201);
-  assert.equal(registerB.status, 201);
+  assert.equal(registerA.status, 202);
+  assert.equal(registerB.status, 202);
+
+  assert.equal((await userA.post('/api/auth/login').send({ email: `isolation-a-${suffix}@example.test`, password: 'correct-horse-battery-1' })).status, 200);
+  assert.equal((await userB.post('/api/auth/login').send({ email: `isolation-b-${suffix}@example.test`, password: 'correct-horse-battery-2' })).status, 200);
 
   const created = await userA.post('/api/film/projects').send({ title: 'Private Project A' });
   assert.equal(created.status, 201);
