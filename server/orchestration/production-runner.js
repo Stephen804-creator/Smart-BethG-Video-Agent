@@ -10,7 +10,7 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
   fs.mkdirSync(path.dirname(jobsFile), { recursive: true });
 
   async function save(job) {
-    if (typeof persistJob === 'function') await persistJob({ id: job.job_id, type: 'production-execution', status: job.status, createdAt: job.created_at, startedAt: job.started_at, completedAt: job.completed_at, result: job, error: job.error || null });
+    if (typeof persistJob === 'function') await persistJob({ id: job.job_id, ownerUserId: optionsOwnerUserId, type: 'production-execution', status: job.status, createdAt: job.created_at, startedAt: job.started_at, completedAt: job.completed_at, result: job, error: job.error || null });
     return job;
   }
 
@@ -31,6 +31,8 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
   }
 
   async function execute(graph, options = {}) {
+    const optionsOwnerUserId = options.ownerUserId || null;
+    if (!optionsOwnerUserId) throw new Error('An authenticated owner is required for production execution.');
     const projectId = graph.project_id || 'project';
     const execution = {
       schema_version: 'production-run-v3',
