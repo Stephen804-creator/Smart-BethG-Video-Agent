@@ -42,6 +42,8 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Refresh lockfile resolutions
+        run: npm install --package-lock-only --ignore-scripts
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: Run browser flow
