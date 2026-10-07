@@ -5,15 +5,25 @@ test('login → generate → export production flow', async ({ page }) => {
   const suffix = Date.now();
   const email = `e2e-${suffix}@example.test`;
   const password = 'e2e-password';
+  let authenticated = false;
 
   await page.route('**/api/auth/status', route => route.fulfill({
     status: 200, contentType: 'application/json',
-    body: JSON.stringify({ required: true, mode: 'password-session', registration: true, authenticated: false, user: null })
+    body: JSON.stringify({
+      required: true,
+      mode: 'password-session',
+      registration: true,
+      authenticated,
+      user: authenticated ? { id: 'e2e-user', email } : null
+    })
   }));
-  await page.route('**/api/auth/login', route => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ authenticated: true, user: { id: 'e2e-user', email } })
-  }));
+  await page.route('**/api/auth/login', route => {
+    authenticated = true;
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ authenticated: true, user: { id: 'e2e-user', email } })
+    });
+  });
   await page.route('**/api/film/projects', async route => {
     if (route.request().method() === 'GET') {
       await route.fulfill({
@@ -35,7 +45,7 @@ test('login → generate → export production flow', async ({ page }) => {
   await page.route('**/api/jobs/e2e-job-1/events', route => route.fulfill({
     status: 200,
     contentType: 'text/event-stream',
-    body: 'event: job\ndata: {"id":"e2e-job-1","status":"completed","result":{"generation":{"id":"e2e-generation","output":"/output/e2e.mp4","provider":"test"}}}\n\n'
+    body: 'event: job\\ndata: {"id":"e2e-job-1","status":"completed","result":{"generation":{"id":"e2e-generation","output":"/output/e2e.mp4","provider":"test"}}}\\n\\n'
   }));
   await page.route('**/api/jobs/e2e-job-1/cost', route => route.fulfill({
     status: 200, contentType: 'application/json',
@@ -47,22 +57,13 @@ test('login → generate → export production flow', async ({ page }) => {
   }));
 
   await page.context().clearCookies();
-  page.on('response', async response => {
-    if (response.url().includes('/api/auth/status')) {
-      console.log('AUTH_STATUS', response.status(), await response.text());
-    }
-  });
   await page.goto('/');
-  await page.waitForTimeout(1000);
-  const bodyText = await page.locator('body').innerText();
-  expect(bodyText).toContain('Sign in to access your production workspace.');
+  await expect(page.getByPlaceholder('Email address')).toBeVisible();
   await page.getByPlaceholder('Email address').fill(email);
   await page.getByPlaceholder('Password (8+ characters)').fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.waitForTimeout(500);
-  console.log('AFTER_LOGIN_TEXT', await page.locator('body').innerText());
-  await expect(page.getByText('Generate a shot')).toBeVisible();
 
+  await expect(page.getByText('Generate a shot')).toBeVisible();
   await expect(page.getByPlaceholder('Describe the shot you want to generate…')).toBeVisible();
   await page.getByPlaceholder('Describe the shot you want to generate…').fill('A cinematic test shot');
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
