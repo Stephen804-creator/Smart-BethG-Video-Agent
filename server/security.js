@@ -16,7 +16,7 @@ export function hashPassword(password, salt = crypto.randomBytes(16).toString('h
   return new Promise((resolve, reject) => crypto.scrypt(String(password), salt, 64, { N: 16384, r: 8, p: 1, maxmem: 32 * 1024 * 1024 }, (error, derived) => {
     if (error) return reject(error);
     resolve(salt + ':' + derived.toString('hex'));
-  });
+  }));
 }
 
 export function verifyPassword(password, stored) {
