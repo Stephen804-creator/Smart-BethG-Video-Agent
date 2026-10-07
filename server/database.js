@@ -353,6 +353,7 @@ export async function resolveEntityStateAt(projectId, entityId, sceneId = null, 
 export async function saveFilmProjectToDatabase(project) {
   const db = getPool();
   if (!db || !project?.id) return false;
+  if (dbOwnerId(project.ownerUserId) === null) throw new Error('A persisted film project requires an authenticated owner.');
   await db.query(
     `INSERT INTO media_projects (id, owner_user_id, name, metadata, updated_at)
      VALUES ($1,$2,$3,$4,NOW())
@@ -492,12 +493,13 @@ export async function consumeRateLimitFromDatabase(bucketKey, { limit = 60, wind
 export async function claimJob(jobId, ownerUserId = null, workerId = 'worker') {
   const db = getPool();
   if (!db || !jobId) return true;
+  if (dbOwnerId(ownerUserId) === null) return false;
   const result = await db.query(
     `UPDATE media_jobs
         SET status='running', started_at=COALESCE(started_at, NOW()),
             worker_id=$3, lease_until=NOW() + INTERVAL '2 minutes'
       WHERE id=$1 AND status='queued'
-        AND (($2::text IS NULL AND owner_user_id IS NULL) OR owner_user_id=$2)
+        AND owner_user_id=$2
       RETURNING id`,
     [jobId, ownerUserId || null, workerId]
   );
