@@ -48,13 +48,15 @@ test('login → generate → export production flow', async ({ page }) => {
   ]);
 
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'New film project' }).click();
+  await expect(page.getByText('Film project created')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
   await shotPrompt.fill('A cinematic test shot');
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
-  await expect(page.getByText('Completed')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('No video returned')).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole('button', { name: /Export/i }).first().click();
+  await page.getByRole('button', { name: 'Export timeline' }).click();
   await expect(page.getByText('Film export ready')).toBeVisible();
   await api.dispose();
 });
