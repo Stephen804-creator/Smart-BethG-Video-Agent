@@ -1464,5 +1464,6 @@ initDatabase().then(async () => {
   app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port}`));
 }).catch(error => {
   console.error('Database initialization failed:', error?.message || error);
+  if (process.env.NODE_ENV === 'production') process.exit(1);
   app.listen(port, '0.0.0.0', () => console.log(`Cinematic Agent listening on port ${port} (database unavailable)`));
 });
