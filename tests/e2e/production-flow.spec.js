@@ -11,12 +11,6 @@ test('login → generate → export production flow', async ({ page }) => {
   });
   expect(registration.ok()).toBeTruthy();
 
-  const projectResponse = await api.post('/api/film/projects', {
-    data: { title: 'E2E Film' }
-  });
-  expect(projectResponse.status()).toBe(201);
-  const projectBody = await projectResponse.json();
-  const projectId = projectBody.project.id;
   await api.post('/api/auth/logout');
 
   let generateRequestSeen = false;
@@ -111,8 +105,9 @@ test('login → generate → export production flow', async ({ page }) => {
   await page.goto('/projects');
   await expect(page.getByText('Production dashboard')).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: 'Create / open production' }).click();
-  await expect(page.locator('select').first()).toBeVisible({ timeout: 10_000 });
-  await page.locator('select').first().selectOption(projectId);
+  await expect(page.getByRole('button', { name: 'New film project' })).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'New film project' }).click();
+  await expect(page.getByText('Film project created')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
@@ -124,7 +119,6 @@ test('login → generate → export production flow', async ({ page }) => {
   page.on('pageerror', error => consoleErrors.push(error.message));
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click({ force: true });
 
-  if (!generateRequestSeen) throw new Error(`Generate request was not sent. Page errors: ${consoleErrors.join(' | ')}`);
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => jobEventsSeen, { timeout: 10_000 }).toBe(true);
 
