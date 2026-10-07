@@ -755,7 +755,10 @@ app.post('/api/film/projects/:projectId/shots/:shotId/select-take', async (req, 
   res.json({ project });
 });
 
-app.post('/api/film/projects/:projectId/assets/upload', upload.single('file'), async (req, res) => {
+app.post('/api/film/projects/:projectId/assets/upload', (req, res, next) => upload.single('file')(req, res, err => {
+  if (err) return res.status(400).json({ error: err.message || 'Invalid upload.' });
+  next();
+}), async (req, res) => {
   try {
     const project = filmStore.getProject(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
@@ -770,6 +773,8 @@ app.post('/api/film/projects/:projectId/assets/upload', upload.single('file'), a
     res.status(201).json({ asset });
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not ingest media asset.' });
+  } finally {
+    if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch {} }
   }
 });
 
