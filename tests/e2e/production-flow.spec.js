@@ -23,7 +23,7 @@ test('login → generate → export production flow', async ({ page }) => {
   await page.route('**/api/jobs/e2e-job-1/events', route => route.fulfill({
     status: 200,
     contentType: 'text/event-stream',
-    body: 'event: job\\ndata: {"id":"e2e-job-1","status":"completed","result":{"generation":{"id":"e2e-generation","output":"/output/e2e.mp4","provider":"test"}}}\\n\\n'
+    body: `event: job\ndata: {"id":"e2e-job-1","status":"completed","result":{"generation":{"id":"e2e-generation","output":"/output/e2e.mp4","provider":"test"}}}\n\n`
   }));
   await page.route('**/api/jobs/e2e-job-1/cost', route => route.fulfill({
     status: 200, contentType: 'application/json',
