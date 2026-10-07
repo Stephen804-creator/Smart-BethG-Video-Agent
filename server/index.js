@@ -1186,13 +1186,14 @@ app.post('/api/projects/:projectId/entities', async (req, res) => {
   }
 });
 
-app.post('/api/projects/:projectId/entity-events', async (req, res) => {
+app.post('/api/projects/:projectId/entity-events', requireProjectAccess, async (req, res) => {
   try {
     const database = await getDatabaseStatus();
     if (!database.enabled) return res.status(503).json({ error: 'Entity event storage is unavailable because the database is not configured.', database });
     if (!database.connected) return res.status(503).json({ error: 'Entity event storage is unavailable because the database is not connected.', database });
     await recordEntityEvent({
       projectId: req.params.projectId,
+      ownerUserId: req.authUserId,
       sceneId: req.body?.sceneId,
       shotId: req.body?.shotId,
       entityId: req.body?.entityId,
