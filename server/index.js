@@ -60,7 +60,7 @@ const upload = multer({
   }
 });
 const comfyWorkflowPath = process.env.COMFYUI_WORKFLOW_PATH ? path.resolve(root, process.env.COMFYUI_WORKFLOW_PATH) : '';
-const authRateLimit = rateLimitMiddleware({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
+const authRateLimit = rateLimitMiddleware({ limit: 60, windowMs: 15 * 60 * 1000, keyPrefix: 'auth' });
 const generationRateLimit = rateLimitMiddleware({ limit: 5, windowMs: 10 * 60 * 1000, keyPrefix: 'generation' });
 const workerId = process.env.WORKER_ID || `cinematic-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 const generationQueue = createJobQueue({
