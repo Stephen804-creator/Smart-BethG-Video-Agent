@@ -206,10 +206,17 @@ function App() {
       setStatus('Rendering film export…');
       const r = await apiFetch('/film/projects/' + filmProjectId + '/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Could not export film.');
+      if (!r.ok) throw new Error(data.error || 'Could not queue film export.');
+      const finalJob = data.job ? await waitForJob(data.job.id, job => {
+        if (job.status === 'queued') setStatus('Export queued…');
+        if (job.status === 'running') setStatus('Rendering film export…');
+      }) : data;
+      if (finalJob.status === 'failed') throw new Error(finalJob.error || 'Film export failed.');
+      if (finalJob.status === 'cancelled') throw new Error('Film export cancelled.');
+      const result = finalJob.result || data;
       setStatus('Film export ready');
       notify('Film export rendered successfully', 'success');
-      if (data.export?.output) window.open(data.export.output, '_blank', 'noopener,noreferrer');
+      if (result.export?.output) window.open(result.export.output, '_blank', 'noopener,noreferrer');
     } catch (e) {
       setStatus(e.message || 'Film export failed');
       notify(e.message || 'Film export failed', 'error');
