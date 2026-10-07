@@ -167,7 +167,14 @@ export function consumeRateLimit(key, { limit = 60, windowMs = 60_000 } = {}) {
 export function rateLimitMiddleware({ limit, windowMs, keyPrefix }) {
   return async (req, res, next) => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const key = `${keyPrefix}:${ip}`;
+    const userId = req.authUserId || null;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    // Authentication endpoints have no user identity yet, so bind the bucket to
+    // the submitted account plus the trusted client IP. Authenticated APIs use
+    // the session identity, preventing a shared reverse-proxy IP from becoming
+    // one global bucket for every user.
+    const identity = userId || (email ? `email:${email}:ip:${ip}` : `ip:${ip}`);
+    const key = `${keyPrefix}:${identity}`;
     let result = null;
     try {
       if (process.env.DATABASE_URL) result = await consumeRateLimitFromDatabase(key, { limit, windowMs });
