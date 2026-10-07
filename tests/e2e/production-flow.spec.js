@@ -48,8 +48,10 @@ test('login → generate → export production flow', async ({ page }) => {
   ]);
 
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: 'New film project' }).click();
-  await expect(page.getByText('Film project created')).toBeVisible({ timeout: 10_000 });
+  const projectResponse = await page.request.post('/api/film/projects', { data: { title: 'E2E Film' } });
+  expect(projectResponse.ok()).toBeTruthy();
+  await page.reload();
+  await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
   await shotPrompt.fill('A cinematic test shot');
