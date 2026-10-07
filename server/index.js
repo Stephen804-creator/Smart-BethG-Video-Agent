@@ -762,7 +762,6 @@ app.post('/api/film/projects/:projectId/shots/:shotId/reorder', async (req, res)
 });
 
 app.post('/api/film/projects/:projectId/import-generation', async (req, res) => {
-  let stored = null;
   try {
     const project = filmStore.getProject(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
@@ -834,6 +833,7 @@ app.post('/api/film/projects/:projectId/assets/upload', (req, res, next) => uplo
   if (err) return res.status(400).json({ error: err.message || 'Invalid upload.' });
   next();
 }), async (req, res) => {
+  let stored = null;
   try {
     const project = filmStore.getProject(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
