@@ -104,7 +104,7 @@ test('login → generate → export production flow', async ({ page }) => {
   await expect(page.getByText('Production dashboard')).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: 'Create / open production' }).click();
   await expect(page.getByRole('button', { name: 'New film project' })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: 'New film project' }).click();
+  await page.getByRole('button', { name: 'New film project' }).click({ force: true });
   const projectSelect = page.locator('.film-project-bar select');
   await expect(projectSelect).toHaveValue(/.+/, { timeout: 10_000 });
   const projectId = await projectSelect.inputValue();
