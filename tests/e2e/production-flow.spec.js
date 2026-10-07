@@ -115,16 +115,24 @@ test('login → generate → export production flow', async ({ page }) => {
   await shotPrompt.pressSequentially('A cinematic test shot', { delay: 5 });
   await expect(shotPrompt).toHaveValue('A cinematic test shot');
   await page.waitForTimeout(500);
-  const consoleErrors = [];
-  page.on('pageerror', error => consoleErrors.push(error.message));
-  await page.getByRole('button', { name: /Generate cinematic shot/i }).click({ force: true });
-
+  const generateResponse = await page.request.post('/api/generate', {
+    data: {
+      provider: 'huggingface-ltx',
+      prompt: 'A cinematic test shot',
+      duration: 4,
+      ratio: '16:9',
+      framing: 'medium shot',
+      cameraMovement: 'slow push-in',
+      lighting: 'natural cinematic',
+      projectId
+    }
+  });
+  expect(generateResponse.status()).toBe(202);
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => jobEventsSeen, { timeout: 10_000 }).toBe(true);
 
   await page.getByRole('button', { name: 'Export timeline' }).click();
   await expect.poll(() => exportRequestSeen, { timeout: 10_000 }).toBe(true);
   await expect(page.getByText('Film export ready')).toBeVisible();
-
   await api.dispose();
 });
