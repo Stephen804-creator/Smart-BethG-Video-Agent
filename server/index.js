@@ -120,9 +120,10 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.get('/api/auth/status', async (req, res) => {
-  const userId = getSessionUserId(req);
+  const authenticated = await isSessionActive(req);
+  const userId = authenticated ? getSessionUserId(req) : null;
   const user = userId && userId !== 'admin' ? await getUserById(userId) : (userId === 'admin' ? { id: 'admin', email: null, displayName: 'Administrator' } : null);
-  res.json({ ...getPublicAuthStatus(), registration: Boolean(process.env.DATABASE_URL), authenticated: await isSessionActive(req), user: user ? { id: user.id, email: user.email, displayName: user.display_name || user.displayName, mfaEnabled: Boolean(user.mfa_enabled) } : null });
+  res.json({ ...getPublicAuthStatus(), registration: Boolean(process.env.DATABASE_URL), authenticated, user: user ? { id: user.id, email: user.email, displayName: user.display_name || user.displayName, mfaEnabled: Boolean(user.mfa_enabled) } : null });
 });
 
 app.post('/api/auth/register', authRateLimit, async (req, res) => {
