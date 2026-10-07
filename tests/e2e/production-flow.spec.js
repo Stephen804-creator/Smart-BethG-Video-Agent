@@ -116,9 +116,10 @@ test('login → generate → export production flow', async ({ page }) => {
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
-  await shotPrompt.fill('A cinematic test shot');
+  await shotPrompt.fill('');
+  await shotPrompt.pressSequentially('A cinematic test shot', { delay: 5 });
   await expect(shotPrompt).toHaveValue('A cinematic test shot');
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(500);
   const consoleErrors = [];
   page.on('pageerror', error => consoleErrors.push(error.message));
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click({ force: true });
