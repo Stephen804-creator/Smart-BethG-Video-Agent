@@ -12,6 +12,36 @@ function authSecret() {
   return process.env.APP_SESSION_SECRET || '';
 }
 
+export function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return new Promise((resolve, reject) => crypto.scrypt(String(password), salt, 64, { N: 16384, r: 8, p: 1, maxmem: 32 * 1024 * 1024 }, (error, derived) => {
+    if (error) return reject(error);
+    resolve(salt + ':' + derived.toString('hex'));
+  });
+}
+
+export function verifyPassword(password, stored) {
+  const [salt, expected] = String(stored || '').split(':');
+  if (!salt || !expected) return Promise.resolve(false);
+  return new Promise((resolve, reject) => crypto.scrypt(String(password), salt, 64, { N: 16384, r: 8, p: 1, maxmem: 32 * 1024 * 1024 }, (error, derived) => {
+    if (error) return reject(error);
+    const actual = derived.toString('hex');
+    resolve(actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected)));
+  });
+}
+
+function encryptionKey() { return crypto.createHash('sha256').update(authSecret()).digest(); }
+export function encryptSecret(value) {
+  const iv = crypto.randomBytes(12); const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  return [iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), ciphertext.toString('base64url')].join('.');
+}
+export function decryptSecret(value) {
+  try { const [iv, tag, ciphertext] = String(value || '').split('.'); if (!iv || !tag || !ciphertext) return null;
+    const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(iv, 'base64url')); decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+    return Buffer.concat([decipher.update(Buffer.from(ciphertext, 'base64url')), decipher.final()]).toString('utf8');
+  } catch { return null; }
+}
+
 export function secretsMatch(supplied, expected) {
   const a = Buffer.from(String(supplied || ''));
   const b = Buffer.from(String(expected || ''));
