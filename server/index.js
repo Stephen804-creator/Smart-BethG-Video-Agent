@@ -615,11 +615,68 @@ async function executeCanonicalGeneration(input = {}) {
   throw new Error('Unknown provider.');
 }
 
+async function executeTimelineExport({ projectId, ownerUserId }) {
+  const project = await getOwnedProject(projectId, ownerUserId);
+  if (!project) throw new Error('Film project not found.');
+  const orderedShots = (project.shots || []).slice().sort((a, b) => {
+    const sa = project.scenes?.find(s => s.id === a.sceneId)?.sequence || 0;
+    const sb = project.scenes?.find(s => s.id === b.sceneId)?.sequence || 0;
+    return sa - sb || (a.sequence || 0) - (b.sequence || 0);
+  });
+  const clips = [];
+  for (const shot of orderedShots) {
+    const take = (project.takes || []).find(t => t.id === shot.selectedTakeId) || (project.takes || []).find(t => t.shotId === shot.id);
+    const asset = take?.assetId ? (project.assets || []).find(a => a.id === take.assetId) : null;
+    if (!asset?.filename) continue;
+    const inputPath = resolveMediaPath(asset.uri || asset.filename, { root, outputDir, assetDir });
+    if (!inputPath || !fs.existsSync(inputPath)) continue;
+    clips.push({ shotId: shot.id, inputPath, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
+  }
+  if (!clips.length) throw new Error('No usable selected takes are available for export.');
+  const rendered = await renderTimeline({ clips, outputDir });
+  const exportAsset = filmStore.addAsset(projectId, {
+    id: 'export-' + path.basename(rendered.filename, '.mp4'),
+    name: 'Timeline Export ' + new Date().toISOString(),
+    filename: rendered.filename,
+    sourceType: 'rendered-export',
+    uri: rendered.output,
+    mimeType: 'video/mp4',
+    notes: JSON.stringify({ clipCount: rendered.clips?.length || 0, duration: rendered.duration })
+  });
+  const evaluation = await evaluateVideoFile(rendered.outputPath, { frameOutputRoot: path.join(dataDir, 'evaluation-frames') });
+  await persistFilmProject(filmStore.getProject(projectId));
+  return { export: rendered, asset: exportAsset, evaluation };
+}
+
+async function executeShotRender({ projectId, shotId, assetId, ownerUserId }) {
+  const project = await getOwnedProject(projectId, ownerUserId);
+  if (!project) throw new Error('Film project not found.');
+  const shot = (project.shots || []).find(item => item.id === shotId);
+  if (!shot) throw new Error('Shot not found.');
+  const selectedTake = (project.takes || []).find(take => take.id === shot.selectedTakeId);
+  const requestedAssetId = assetId || selectedTake?.assetId;
+  const asset = requestedAssetId ? (project.assets || []).find(item => item.id === requestedAssetId) : null;
+  if (!asset?.filename) throw new Error('Select a take with an imported media asset before rendering.');
+  const inputPath = resolveMediaPath(asset.uri || asset.filename, { root, outputDir, assetDir });
+  if (!inputPath || !fs.existsSync(inputPath)) throw new Error('Source media file is unavailable.');
+  const rendered = await renderShot({ inputPath, outputDir, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
+  const outputAsset = filmStore.addAsset(projectId, {
+    name: 'Rendered Shot ' + shot.number, filename: rendered.filename, sourceType: 'rendered', uri: rendered.output,
+    sceneId: shot.sceneId, shotId: shot.id, mimeType: 'video/mp4',
+    notes: JSON.stringify({ sourceAssetId: asset.id, applied: rendered.applied, limitations: rendered.limitations })
+  });
+  const evaluation = await evaluateVideoFile(rendered.outputPath, { frameOutputRoot: path.join(dataDir, 'evaluation-frames') });
+  await persistFilmProject(filmStore.getProject(projectId));
+  return { asset: outputAsset, render: rendered, evaluation };
+}
+
 async function resolveQueuedTask(record) {
   const payload = record?.payload || {};
   if (record?.type === 'video-generation' || record?.type === 'media-generation') {
     return signal => executeCanonicalGeneration({ ...payload, signal });
   }
+  if (record?.type === 'timeline-export') return signal => executeTimelineExport({ ...payload, signal });
+  if (record?.type === 'shot-render') return signal => executeShotRender({ ...payload, signal });
   if (record?.type === 'production-execution') {
     return async signal => {
       const runner = createProductionRunner({
@@ -887,38 +944,16 @@ app.post('/api/film/projects/:projectId/assets', async (req, res) => {
 
 app.post('/api/film/projects/:projectId/export', async (req, res) => {
   try {
-    const project = filmStore.getProject(req.params.projectId);
+    const ownerUserId = getSessionUserId(req);
+    const project = await getOwnedProject(req.params.projectId, ownerUserId);
     if (!project) return res.status(404).json({ error: 'Film project not found.' });
-    const orderedShots = (project.shots || []).slice().sort((a, b) => {
-      const sa = project.scenes?.find(s => s.id === a.sceneId)?.sequence || 0;
-      const sb = project.scenes?.find(s => s.id === b.sceneId)?.sequence || 0;
-      return sa - sb || (a.sequence || 0) - (b.sequence || 0);
+    const job = generationQueue.enqueue('timeline-export', signal => executeTimelineExport({ projectId: project.id, ownerUserId, signal }), {
+      ownerUserId,
+      payload: { projectId: project.id, ownerUserId }
     });
-    const clips = [];
-    for (const shot of orderedShots) {
-      const take = (project.takes || []).find(t => t.id === shot.selectedTakeId) || (project.takes || []).find(t => t.shotId === shot.id);
-      const asset = take?.assetId ? (project.assets || []).find(a => a.id === take.assetId) : null;
-      if (!asset?.filename) continue;
-      const inputPath = resolveMediaPath(asset.uri || asset.filename, { root, outputDir, assetDir });
-      if (!inputPath || !fs.existsSync(inputPath)) continue;
-      clips.push({ shotId: shot.id, inputPath, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
-    }
-    if (!clips.length) return res.status(400).json({ error: 'No usable selected takes are available for export.' });
-    const rendered = await renderTimeline({ clips, outputDir });
-    const exportAsset = filmStore.addAsset(req.params.projectId, {
-      id: 'export-' + path.basename(rendered.filename, '.mp4'),
-      name: 'Timeline Export ' + new Date().toISOString(),
-      filename: rendered.filename,
-      sourceType: 'rendered-export',
-      uri: rendered.output,
-      mimeType: 'video/mp4',
-      notes: JSON.stringify({ clipCount: rendered.clips?.length || 0, duration: rendered.duration })
-    });
-    const evaluation = await evaluateVideoFile(rendered.outputPath, { frameOutputRoot: path.join(dataDir, 'evaluation-frames') });
-    await persistFilmProject(filmStore.getProject(req.params.projectId));
-    res.status(201).json({ export: rendered, asset: exportAsset, evaluation });
+    res.status(202).json({ status: 'Queued', job });
   } catch (error) {
-    res.status(400).json({ error: error?.message || 'Could not export film.' });
+    res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue film export.' });
   }
 });
 
@@ -947,6 +982,24 @@ app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) 
     res.status(201).json({ asset: outputAsset, render: rendered, evaluation });
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not render shot.' });
+  }
+});
+
+app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) => {
+  try {
+    const ownerUserId = getSessionUserId(req);
+    const project = await getOwnedProject(req.params.projectId, ownerUserId);
+    if (!project) return res.status(404).json({ error: 'Film project not found.' });
+    if (!(project.shots || []).some(shot => shot.id === req.params.shotId)) return res.status(404).json({ error: 'Shot not found.' });
+    const job = generationQueue.enqueue('shot-render', signal => executeShotRender({
+      projectId: project.id, shotId: req.params.shotId, assetId: req.body?.assetId || null, ownerUserId, signal
+    }), {
+      ownerUserId,
+      payload: { projectId: project.id, shotId: req.params.shotId, assetId: req.body?.assetId || null, ownerUserId }
+    });
+    res.status(202).json({ status: 'Queued', job });
+  } catch (error) {
+    res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue shot render.' });
   }
 });
 
