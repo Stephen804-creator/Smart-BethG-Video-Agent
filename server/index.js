@@ -385,12 +385,23 @@ function probeDuration(filepath) {
   return new Promise((resolve) => {
     const probe = spawn('ffprobe', ['-protocol_whitelist', 'file', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
     let output = '';
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      try { probe.kill('SIGKILL'); } catch {}
+      finish(null);
+    }, 30_000);
     probe.stdout.on('data', chunk => { output += chunk.toString(); });
-    probe.on('error', () => resolve(null));
+    probe.on('error', () => finish(null));
     probe.on('close', code => {
-      if (code !== 0) return resolve(null);
+      if (code !== 0) return finish(null);
       const seconds = Number.parseFloat(output.trim());
-      resolve(Number.isFinite(seconds) ? Number(seconds.toFixed(3)) : null);
+      finish(Number.isFinite(seconds) ? Number(seconds.toFixed(3)) : null);
     });
   });
 }
