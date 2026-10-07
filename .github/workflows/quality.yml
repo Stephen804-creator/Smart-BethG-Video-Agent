@@ -32,6 +32,8 @@ jobs:
       APP_SESSION_SECRET: ci-test-session-secret
       NODE_ENV: test
       APP_AUTH_PASSWORD: unused-in-db-mode
+      APP_ACCESS_TOKEN: ci-bearer-token
+      APP_TRUST_PROXY: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
