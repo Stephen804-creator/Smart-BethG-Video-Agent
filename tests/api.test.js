@@ -31,7 +31,8 @@ before(async () => {
       NODE_ENV: 'test',
       PORT: '8787',
       APP_AUTH_PASSWORD: 'unused-in-db-mode',
-      APP_ALLOWED_ORIGINS: 'http://127.0.0.1:4173,http://localhost:4173'
+      APP_ALLOWED_ORIGINS: 'http://127.0.0.1:4173,http://localhost:4173',
+      APP_ACCESS_TOKEN: 'ci-bearer-token'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -55,6 +56,43 @@ test('API requires authentication for protected routes', { skip: !enabled }, asy
   const headers = await api.get('/api/health');
   assert.equal(headers.headers['x-content-type-options'], 'nosniff');
   assert.match(headers.headers['content-security-policy'], /default-src 'self'/);
+  assert.equal(headers.headers['x-frame-options'], 'DENY');
+  assert.equal(headers.headers['referrer-policy'], 'strict-origin-when-cross-origin');
+  assert.equal(headers.headers['permissions-policy'], 'camera=\(\), microphone=\(\), geolocation=\(\)');
+});
+
+test('bearer tokens never acquire a user identity for owner-scoped resources', { skip: !enabled }, async () => {
+  const response = await api.get('/api/generations').set('Authorization', 'Bearer ci-bearer-token');
+  assert.equal(response.status, 401);
+  assert.match(response.body.error, /user session/i);
+});
+
+test('registration does not reveal whether an email already exists', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const email = `enumeration-${suffix}@example.test`;
+  const first = await api.post('/api/auth/register').send({ email, password: 'correct-horse-battery-5' });
+  const second = await api.post('/api/auth/register').send({ email, password: 'different-password-6' });
+  assert.equal(first.status, 202);
+  assert.equal(second.status, 202);
+  assert.deepEqual(second.body, first.body);
+});
+
+test('rejected uploads are cleaned up and unsupported media is refused', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = `upload-${suffix}@example.test`;
+  const password = 'correct-horse-battery-upload';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const project = await agent.post('/api/film/projects').send({ title: 'Upload Security' });
+  assert.equal(project.status, 201);
+  const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
+  const before = (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
+    .attach('file', Buffer.from('not a video'), 'malware.txt');
+  assert.equal(response.status, 400);
+  const after = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  assert.equal(after.length, before.length);
 });
 
 test('registration, login, status and logout work through session cookies', { skip: !enabled }, async () => {
