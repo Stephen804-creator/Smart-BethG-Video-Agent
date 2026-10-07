@@ -9,8 +9,8 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
   if (typeof executeTask !== 'function') throw new Error('The production runner requires the canonical media execution function.');
   fs.mkdirSync(path.dirname(jobsFile), { recursive: true });
 
-  async function save(job) {
-    if (typeof persistJob === 'function') await persistJob({ id: job.job_id, ownerUserId: optionsOwnerUserId, type: 'production-execution', status: job.status, createdAt: job.created_at, startedAt: job.started_at, completedAt: job.completed_at, result: job, error: job.error || null });
+  async function save(job, ownerUserId = null) {
+    if (typeof persistJob === 'function') await persistJob({ id: job.job_id, ownerUserId, type: 'production-execution', status: job.status, createdAt: job.created_at, startedAt: job.started_at, completedAt: job.completed_at, result: job, error: job.error || null });
     return job;
   }
 
@@ -82,7 +82,7 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
         validateMediaTask(task);
         job.status = 'running';
         job.started_at = now();
-        await save(job);
+        await save(job, optionsOwnerUserId);
 
         const result = await executeTask({
           ...task,
