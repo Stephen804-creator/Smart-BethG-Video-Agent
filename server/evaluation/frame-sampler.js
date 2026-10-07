@@ -44,7 +44,7 @@ export async function sampleVideoFrames(filePath, options = {}) {
   fs.mkdirSync(outputDir, { recursive: true });
 
   const probe = await runCommand('ffprobe', [
-    '-v', 'error', '-show_entries', 'format=duration',
+    '-protocol_whitelist', 'file', '-v', 'error', '-show_entries', 'format=duration',
     '-of', 'default=noprint_wrappers=1:nokey=1', filePath
   ]);
   const duration = Number(probe.stdout.trim());
@@ -56,7 +56,7 @@ export async function sampleVideoFrames(filePath, options = {}) {
     const safeTime = Math.min(Math.max(timestamp, 0), Math.max(duration - 0.05, 0));
     const outputPath = path.join(outputDir, `frame-${String(i + 1).padStart(2, '0')}.jpg`);
     await runCommand('ffmpeg', [
-      '-hide_banner', '-loglevel', 'error',
+      '-hide_banner', '-loglevel', 'error', '-protocol_whitelist', 'file',
       '-ss', safeTime.toFixed(3), '-i', filePath,
       '-frames:v', '1', '-q:v', '2', '-y', outputPath
     ], { timeoutMs: 120000 });
