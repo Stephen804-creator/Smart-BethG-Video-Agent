@@ -591,6 +591,13 @@ async function linkGenerationToFilmShot(input = {}, result = {}) {
 }
 async function executeCanonicalGeneration(input = {}) {
   if (process.env.DATABASE_URL && !input.ownerUserId) throw new Error('An authenticated owner is required for generation.');
+  const scopedProjectId = input.projectId || input.metadata?.projectId || null;
+  const scopedShotId = input.shotId || input.metadata?.shotId || null;
+  if (scopedProjectId && input.ownerUserId) {
+    const ownedProject = await getOwnedProject(String(scopedProjectId), String(input.ownerUserId));
+    if (!ownedProject) throw new Error('Film project not found.');
+    if (scopedShotId && !(ownedProject.shots || []).some(shot => shot.id === scopedShotId)) throw new Error('Shot not found in this project.');
+  }
   const requestedProvider = String(input.provider || input.providerId || 'auto');
   const operation = input.operation || 'text-to-video';
   const prompt = String(input.prompt || '').trim();
