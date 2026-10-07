@@ -44,7 +44,7 @@ test('login → generate → export production flow', async ({ page }) => {
     });
   });
 
-  await page.route('**/api/jobs/e2e-job-1/events', route => {
+  await page.route('**/api/jobs/**', route => {
     jobEventsSeen = true;
     return route.fulfill({
       status: 200,
