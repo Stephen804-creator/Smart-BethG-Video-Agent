@@ -16,7 +16,7 @@ function hashFile(filePath) {
 function probeMedia(filePath) {
   return new Promise(resolve => {
     const probe = spawn('ffprobe', [
-      '-protocol_whitelist', 'file,pipe,crypto,data',
+      '-protocol_whitelist', 'file',
       '-v', 'error',
       '-show_entries', 'format=duration:stream=index,codec_name,codec_type,width,height,r_frame_rate',
       '-of', 'json',
