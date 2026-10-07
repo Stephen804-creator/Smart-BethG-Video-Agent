@@ -16,6 +16,10 @@ test('login → generate → export production flow', async ({ page }) => {
   const projectId = projectBody.project.id;
   await api.post('/api/auth/logout');
 
+  await page.route('**/api/film/projects', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ projects: [{ id: 'e2e-project', name: 'E2E Film', title: 'E2E Film', ownerUserId: 'e2e-user', shots: [], takes: [] }] })
+  }));
   await page.route('**/api/providers*', route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ providers: [{ id: 'huggingface-ltx', configured: true, health: { ok: true } }] })
