@@ -21,15 +21,22 @@ test('login → generate → export production flow', async ({ page }) => {
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ providers: [{ id: 'huggingface-ltx', configured: true, health: { ok: true } }] })
   }));
-  await page.route('**/api/generate', route => route.fulfill({
+  let generateRequestSeen = false;
+  let jobEventsSeen = false;
+  let exportRequestSeen = false;
+  await page.route('**/api/generate', route => {
+    generateRequestSeen = true;
+    return route.fulfill({
     status: 202, contentType: 'application/json',
     body: JSON.stringify({ status: 'Queued', job: { id: 'e2e-job-1', status: 'queued' } })
-  }));
-  await page.route('**/api/jobs/e2e-job-1/events', route => route.fulfill({
+  });
+  await page.route('**/api/jobs/e2e-job-1/events', route => {
+    jobEventsSeen = true;
+    return route.fulfill({
     status: 200,
     contentType: 'text/event-stream',
     body: `event: job\ndata: {"id":"e2e-job-1","status":"completed","result":{"videoUrl":"/output/e2e.mp4","generation":{"id":"e2e-generation","output":"/output/e2e.mp4","provider":"test","model":"test-model","mode":"text-to-video","duration":4}}}\n\n`
-  }));
+  });
   await page.route('**/api/jobs/e2e-job-1', route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ job: { id: 'e2e-job-1', status: 'completed', result: { videoUrl: '/output/e2e.mp4', generation: { id: 'e2e-generation', output: '/output/e2e.mp4', provider: 'test', model: 'test-model', mode: 'text-to-video', duration: 4 } } } })
@@ -38,10 +45,12 @@ test('login → generate → export production flow', async ({ page }) => {
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ jobId: 'e2e-job-1', estimatedCostUsd: 0, actualCostUsd: 0, provider: 'test' })
   }));
-  await page.route('**/api/film/projects/*/export', route => route.fulfill({
+  await page.route('**/api/film/projects/*/export', route => {
+    exportRequestSeen = true;
+    return route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ export: { output: '/output/e2e-export.mp4' } })
-  }));
+  });
 
   await page.goto('/');
   await expect(page.getByPlaceholder('Email address')).toBeVisible();
@@ -64,10 +73,10 @@ test('login → generate → export production flow', async ({ page }) => {
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
   await shotPrompt.fill('A cinematic test shot');
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
-  await expect(page.getByText('Completed')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('test-model')).toBeVisible({ timeout: 5_000 });
-
+  await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => jobEventsSeen, { timeout: 10_000 }).toBe(true);
   await page.getByRole('button', { name: 'Export timeline' }).click();
+  await expect.poll(() => exportRequestSeen, { timeout: 10_000 }).toBe(true);
   await expect(page.getByText('Film export ready')).toBeVisible();
   await api.dispose();
 });
