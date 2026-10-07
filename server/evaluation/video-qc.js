@@ -37,7 +37,7 @@ function parseFps(value) {
 }
 
 async function probeMedia(filePath) {
-  const result = await runCommand('ffprobe', [
+  const result = await runCommand('ffprobe', ['-protocol_whitelist', 'file,pipe,crypto,data',
     '-v', 'error',
     '-show_streams',
     '-show_format',
@@ -49,7 +49,7 @@ async function probeMedia(filePath) {
 
 async function decodeCheck(filePath) {
   try {
-    await runCommand('ffmpeg', [
+    await runCommand('ffmpeg', ['-protocol_whitelist', 'file,pipe,crypto,data',
       '-v', 'error',
       '-i', filePath,
       '-map', '0:v:0',
@@ -64,7 +64,7 @@ async function decodeCheck(filePath) {
 
 async function temporalCheck(filePath) {
   try {
-    const result = await runCommand('ffmpeg', [
+    const result = await runCommand('ffmpeg', ['-protocol_whitelist', 'file,pipe,crypto,data',
       '-hide_banner',
       '-i', filePath,
       '-vf', 'freezedetect=n=-60dB:d=1',
