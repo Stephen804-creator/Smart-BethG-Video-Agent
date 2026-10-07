@@ -50,6 +50,11 @@ test('API requires authentication for protected routes', { skip: !enabled }, asy
   assert.equal(response.status, 401);
   const jobResponse = await api.get('/api/jobs/nonexistent');
   assert.equal(jobResponse.status, 401);
+  const bearer = await api.get('/api/film/projects').set('Authorization', 'Bearer ci-bearer-token');
+  assert.equal(bearer.status, 401);
+  const headers = await api.get('/api/health');
+  assert.equal(headers.headers['x-content-type-options'], 'nosniff');
+  assert.match(headers.headers['content-security-policy'], /default-src 'self'/);
 });
 
 test('registration, login, status and logout work through session cookies', { skip: !enabled }, async () => {
@@ -153,6 +158,23 @@ test('two users cannot read or mutate each other\'s film projects or jobs', { sk
 
   const foreignCancel = await userB.post('/api/jobs/' + jobId + '/cancel');
   assert.equal(foreignCancel.status, 404);
+});
+
+test('project entity events and generation reads are owner-scoped', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const userA = request.agent('http://127.0.0.1:8787');
+  const userB = request.agent('http://127.0.0.1:8787');
+  const emailA = `entity-a-${suffix}@example.test`;
+  const emailB = `entity-b-${suffix}@example.test`;
+  await userA.post('/api/auth/register').send({ email: emailA, password: 'correct-horse-battery-1' });
+  await userB.post('/api/auth/register').send({ email: emailB, password: 'correct-horse-battery-2' });
+  await userA.post('/api/auth/login').send({ email: emailA, password: 'correct-horse-battery-1' });
+  await userB.post('/api/auth/login').send({ email: emailB, password: 'correct-horse-battery-2' });
+  const created = await userA.post('/api/film/projects').send({ title: 'Entity Isolation' });
+  assert.equal(created.status, 201);
+  const projectId = created.body.project.id;
+  assert.equal((await userA.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'blue' } })).status, 200);
+  assert.equal((await userB.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'red' } })).status, 404);
 });
 
 test('database user records round-trip and remain queryable by owner identity', { skip: !enabled }, async () => {
