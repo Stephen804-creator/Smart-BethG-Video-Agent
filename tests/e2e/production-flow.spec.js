@@ -6,6 +6,7 @@ test('login → generate → export production flow', async ({ page }) => {
   const email = `e2e-${suffix}@example.test`;
   const password = 'e2e-password';
   let authenticated = false;
+  let loginRequested = false;
 
   await page.route('**/api/auth/status', route => route.fulfill({
     status: 200, contentType: 'application/json',
@@ -13,11 +14,12 @@ test('login → generate → export production flow', async ({ page }) => {
       required: true,
       mode: 'password-session',
       registration: true,
-      authenticated,
-      user: authenticated ? { id: 'e2e-user', email } : null
+      authenticated: authenticated || loginRequested,
+      user: (authenticated || loginRequested) ? { id: 'e2e-user', email } : null
     })
   }));
   await page.route('**/api/auth/login', route => {
+    loginRequested = true;
     authenticated = true;
     return route.fulfill({
       status: 200, contentType: 'application/json',
