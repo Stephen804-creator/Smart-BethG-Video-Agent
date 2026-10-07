@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'node:crypto';
 import path from 'path';
 import { normalizeMediaTask, validateMediaTask } from '../workers/media-task.js';
 
@@ -48,7 +49,7 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
       const taskId = node.task_id || node.id;
       const operation = node.operation === 'video-generation' ? 'text-to-video' : node.operation;
       const job = {
-        job_id: projectId + ':' + taskId,
+        job_id: 'production-' + crypto.randomUUID(),
         project_id: projectId,
         task_id: taskId,
         source_node_id: node.id,
@@ -85,6 +86,7 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
           ...task,
           providerId: options.providerId || 'auto',
           allowPaid: options.allowPaid === true,
+          ownerUserId: options.ownerUserId || null,
           projectId,
           sceneId: job.scene_id,
           shotId: job.shot_id,
