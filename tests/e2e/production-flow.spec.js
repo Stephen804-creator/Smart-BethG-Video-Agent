@@ -48,7 +48,7 @@ test('login → generate → export production flow', async ({ page }) => {
   ]);
 
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
-  const projectResponse = await page.request.post('/api/film/projects', { data: { title: 'E2E Film' } });
+  const projectResponse = await page.context().request.post('/api/film/projects', { data: { title: 'E2E Film' } });
   expect(projectResponse.ok()).toBeTruthy();
   await page.reload();
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
