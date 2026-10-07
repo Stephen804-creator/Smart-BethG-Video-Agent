@@ -100,14 +100,21 @@ test('login → generate → export production flow', async ({ page }) => {
     page.getByRole('button', { name: 'Sign in', exact: true }).click()
   ]);
 
+  const projectResponse = await page.request.post('/api/film/projects', {
+    data: { title: 'E2E Film' }
+  });
+  expect(projectResponse.status()).toBe(201);
+  const projectBody = await projectResponse.json();
+  const projectId = projectBody.project.id;
+
   await page.goto('/projects');
   await expect(page.getByText('Production dashboard')).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: 'Create / open production' }).click();
-  await expect(page.getByRole('button', { name: 'New film project' })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: 'New film project' }).click({ force: true });
   const projectSelect = page.locator('.film-project-bar select');
-  await expect(projectSelect).toHaveValue(/.+/, { timeout: 10_000 });
-  const projectId = await projectSelect.inputValue();
+  await expect(projectSelect).toBeVisible({ timeout: 10_000 });
+  await expect(projectSelect.locator(`option[value="${projectId}"]`)).toHaveCount(1, { timeout: 10_000 });
+  await projectSelect.selectOption(projectId);
+  await expect(projectSelect).toHaveValue(projectId);
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
