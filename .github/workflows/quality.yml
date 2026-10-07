@@ -43,6 +43,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install dependencies
         run: npm install
+      - name: Refresh lockfile resolutions
+        run: npm install --package-lock-only --ignore-scripts
       - name: Run unit and render tests
         run: npm test
       - name: Run API authorization tests
