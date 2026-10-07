@@ -26,7 +26,7 @@ export function verifyPassword(password, stored) {
     if (error) return reject(error);
     const actual = derived.toString('hex');
     resolve(actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected)));
-  });
+  }));
 }
 
 function encryptionKey() { return crypto.createHash('sha256').update(authSecret()).digest(); }
