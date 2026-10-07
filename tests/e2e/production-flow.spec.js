@@ -152,6 +152,6 @@ test('login → generate → export production flow', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Export timeline', exact: true }).click();
   await expect.poll(() => exportRequestSeen, { timeout: 10_000 }).toBe(true);
-  await expect(page.getByText('Film export ready')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Generate' }).getByText('Film export ready')).toBeVisible();
   await api.dispose();
 });
