@@ -380,7 +380,7 @@ function getVideoResult(data) {
 
 function validateUploadedVideo(filepath) {
   return new Promise((resolve, reject) => {
-    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file', '-v', 'error', '-show_entries', 'format=format_name', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
+    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file', '-format_whitelist', 'mov,matroska,webm,avi,mpegvideo', '-max_alloc', '100000000', '-analyzeduration', '10000000', '-probesize', '10000000', '-v', 'error', '-show_entries', 'format=format_name', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
     let output = '';
     const timer = setTimeout(() => { probe.kill('SIGKILL'); reject(new Error('Uploaded media validation timed out.')); }, 30_000);
     probe.stdout.on('data', chunk => { output += chunk.toString(); });
