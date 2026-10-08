@@ -787,13 +787,13 @@ app.post('/api/film/projects', async (req, res) => {
 
 app.get('/api/film/projects/:projectId', async (req, res) => {
   const project = filmStore.getProject(req.params.projectId);
-  if (!project || (project.ownerUserId && project.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
+  if (!project || !getSessionUserId(req) || project.ownerUserId !== getSessionUserId(req)) return res.status(404).json({ error: 'Film project not found.' });
   res.json({ project });
 });
 
 app.patch('/api/film/projects/:projectId', async (req, res) => {
   const existing = filmStore.getProject(req.params.projectId);
-  if (!existing || (existing.ownerUserId && existing.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
+  if (!existing || !getSessionUserId(req) || existing.ownerUserId !== getSessionUserId(req)) return res.status(404).json({ error: 'Film project not found.' });
   const project = filmStore.updateProject(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 
