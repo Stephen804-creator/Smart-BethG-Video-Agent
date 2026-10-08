@@ -243,7 +243,10 @@ async function getOwnedProject(projectId, userId) {
   if (!projectId || !userId || userId === 'admin') return null;
   if (process.env.DATABASE_URL) {
     const canonical = await getFilmProjectFromDatabase(projectId, userId);
-    if (canonical) filmStore.replaceProjects([canonical]);
+    // The database is authoritative: a cache entry must never revive a project
+    // whose owner was removed, changed, or whose row no longer exists.
+    if (!canonical) return null;
+    filmStore.replaceProjects([canonical]);
   }
   const project = filmStore.getProject(projectId);
   return project && project.ownerUserId === userId ? project : null;
