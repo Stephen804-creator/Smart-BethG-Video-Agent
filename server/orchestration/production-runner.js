@@ -105,7 +105,7 @@ export function createProductionRunner({ jobsFile, executeTask, persistJob = nul
         job.status = 'failed';
         job.completed_at = now();
         job.error = error?.message || 'Canonical media pipeline failed.';
-        await save(job);
+        await save(job, optionsOwnerUserId);
       }
 
       execution.jobs.push(job);
