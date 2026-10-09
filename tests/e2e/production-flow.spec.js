@@ -144,7 +144,7 @@ test('login → generate → export production flow', async ({ page }) => {
   await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => jobEventsSeen, { timeout: 10_000 }).toBe(true);
-  await expect(page.getByText('Shot generated successfully')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole('button', { name: 'Export timeline', exact: true }).click();
   await expect.poll(() => exportRequestSeen, { timeout: 10_000 }).toBe(true);
