@@ -138,10 +138,11 @@ test('login → generate → export production flow', async ({ page }) => {
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
-  await shotPrompt.fill('');
-  await shotPrompt.pressSequentially('A cinematic test shot', { delay: 5 });
+  await shotPrompt.fill('A cinematic test shot');
   await expect(shotPrompt).toHaveValue('A cinematic test shot');
-  await page.getByRole('button', { name: /Generate cinematic shot/i }).click();
+  const generateButton = page.getByRole('button', { name: /Generate cinematic shot/i });
+  await expect(generateButton).toBeEnabled();
+  await generateButton.click();
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => jobEventsSeen, { timeout: 10_000 }).toBe(true);
   await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 10_000 });
