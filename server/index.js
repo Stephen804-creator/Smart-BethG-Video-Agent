@@ -66,7 +66,7 @@ const upload = multer({
     const ext = path.extname(originalName).toLowerCase();
     const mime = String(file.mimetype || '').toLowerCase();
     const safeName = originalName.length <= 255 &&
-      !/[\\/:\\x00-\\x1f\\x7f]/.test(originalName) &&
+      !/[\\\/:\x00-\x1f\x7f]/.test(originalName) &&
       path.basename(originalName) === originalName;
     if (!safeName || !allowedByExtension.has(ext) || !allowedByExtension.get(ext).has(mime)) {
       return cb(new Error('Unsupported media type. Upload a permitted video format.'));
