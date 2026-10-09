@@ -102,6 +102,10 @@ try {
 
 const allowedOrigins = String(process.env.APP_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(x => x.trim()).filter(Boolean);
 const paidGenerationAllowed = process.env.ALLOW_PAID_GENERATION === 'true';
+const PAID_PROVIDER_IDS = new Set(['luma-ray-flash', 'luma-ray-2']);
+function rejectDisabledPaidProvider(provider) {
+  return !paidGenerationAllowed && PAID_PROVIDER_IDS.has(String(provider || '').trim());
+}
 const renderJobTimeoutMs = Math.min(Math.max(Number(process.env.RENDER_JOB_TIMEOUT_MS || 10 * 60 * 1000), 30_000), 30 * 60 * 1000);
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -1392,6 +1396,9 @@ app.get('/api/workers', async (req, res) => {
 app.post('/api/media/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateMediaGenerateInput(req.body || {});
+    if (rejectDisabledPaidProvider(input.provider || input.providerId)) {
+      return res.status(400).json({ error: 'Paid provider use is disabled. Explicitly enable paid generation before using Luma.' });
+    }
     const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
@@ -1458,6 +1465,9 @@ app.get('/api/generations', async (req, res) => {
 app.post('/api/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateGenerateInput(req.body || {});
+    if (rejectDisabledPaidProvider(input.provider || input.providerId)) {
+      return res.status(400).json({ error: 'Paid provider use is disabled. Explicitly enable paid generation before using Luma.' });
+    }
     const ownerUserId = getSessionUserId(req);
     if (!ownerUserId) return res.status(401).json({ error: 'A user session is required for generation.' });
     const project = input.projectId ? await getOwnedProject(String(input.projectId), ownerUserId) : null;
