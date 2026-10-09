@@ -257,8 +257,11 @@ app.use('/api', (req, res, next) => {
 async function getOwnedProject(projectId, userId) {
   if (!projectId || !userId || userId === 'admin') return null;
   if (process.env.DATABASE_URL) {
+    // PostgreSQL is authoritative: a stale in-memory project must not revive
+    // access after its owner changes or its canonical row disappears.
     const canonical = await getFilmProjectFromDatabase(projectId, userId);
-    if (canonical) filmStore.replaceProjects([canonical]);
+    if (!canonical) return null;
+    filmStore.replaceProjects([canonical]);
   }
   const project = filmStore.getProject(projectId);
   return project && project.ownerUserId === userId ? project : null;
