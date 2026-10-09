@@ -62,10 +62,14 @@ test('API requires authentication for protected routes', { skip: !enabled }, asy
   assert.equal(headers.headers['permissions-policy'], 'camera=\(\), microphone=\(\), geolocation=\(\)');
 });
 
-test('bearer tokens never acquire a user identity for owner-scoped resources', { skip: !enabled }, async () => {
+test('bearer tokens never acquire a user identity for owner-scoped resources or private media', { skip: !enabled }, async () => {
   const response = await api.get('/api/generations').set('Authorization', 'Bearer ci-bearer-token');
   assert.equal(response.status, 401);
   assert.match(response.body.error, /user session/i);
+
+  const output = await api.get('/output/private-test.mp4').set('Authorization', 'Bearer ci-bearer-token');
+  assert.equal(output.status, 401);
+  assert.match(output.body.error, /user session/i);
 });
 
 test('registration does not reveal whether an email already exists', { skip: !enabled }, async () => {
