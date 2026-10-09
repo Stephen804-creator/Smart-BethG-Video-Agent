@@ -114,13 +114,13 @@ app.use((req, res, next) => {
 });
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '2mb' }));
-app.use('/output', authMiddleware, express.static(outputDir));
+app.use('/output', requireUserIdentity, express.static(outputDir));
 const servedAssetExtensions = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.mpeg', '.mpg', '.m4v']);
 function secureAssetStatic(req, res, next) {
   const filename = path.basename(req.path);
   const candidate = path.resolve(assetDir, filename);
   if (!servedAssetExtensions.has(path.extname(filename).toLowerCase()) || !candidate.startsWith(assetDir + path.sep) || !fs.existsSync(candidate)) return next();
-  return authMiddleware(req, res, () => {
+  return requireUserIdentity(req, res, () => {
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return express.static(assetDir, { fallthrough: false })(req, res, next);
