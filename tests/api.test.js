@@ -88,7 +88,7 @@ test('rejected uploads are cleaned up and unsupported media is refused', { skip:
   const project = await agent.post('/api/film/projects').send({ title: 'Upload Security' });
   assert.equal(project.status, 201);
   const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
-  const before = (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  const before = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
   const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
     .attach('file', Buffer.from('not a video'), 'malware.txt');
   assert.equal(response.status, 400);
@@ -245,8 +245,16 @@ test('project entity events and generation reads are owner-scoped', { skip: !ena
   const created = await userA.post('/api/film/projects').send({ title: 'Entity Isolation' });
   assert.equal(created.status, 201);
   const projectId = created.body.project.id;
-  assert.equal((await userA.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'blue' } })).status, 200);
-  assert.equal((await userB.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'red' } })).status, 404);
+  const entityId = 'entity-' + suffix;
+  const entities = await userA.post('/api/projects/' + projectId + '/entities')
+    .send({ entities: [{ id: entityId, type: 'character', name: 'Private Character', state: { wardrobe: 'blue' } }] });
+  assert.equal(entities.status, 200, JSON.stringify(entities.body));
+  const ownEvent = await userA.post('/api/projects/' + projectId + '/entity-events')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'blue' } });
+  assert.equal(ownEvent.status, 200, JSON.stringify(ownEvent.body));
+  const foreignEvent = await userB.post('/api/projects/' + projectId + '/entity-events')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'red' } });
+  assert.equal(foreignEvent.status, 404);
 });
 
 test('legacy null-owner generations are never readable through owner-scoped queries', { skip: !enabled }, async () => {

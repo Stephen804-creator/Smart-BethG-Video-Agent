@@ -50,12 +50,28 @@ const assetDir = path.join(dataDir, 'assets');
 const assetStore = createAssetStore({ rootDir: assetDir });
 const upload = multer({
   dest: path.join(dataDir, 'upload-tmp'),
-  limits: { fileSize: 500 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 500 * 1024 * 1024, files: 1, fieldNameSize: 100, fileNameSize: 255 },
   fileFilter: (req, file, cb) => {
-    const allowedMime = new Set(['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska', 'video/x-msvideo', 'video/mpeg']);
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    const allowedExt = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.mpeg', '.mpg', '.m4v']);
-    if (!allowedMime.has(String(file.mimetype || '').toLowerCase()) || !allowedExt.has(ext)) return cb(new Error('Unsupported media type. Upload a permitted video format.'));
+    const allowedByExtension = new Map([
+      ['.mp4', new Set(['video/mp4'])],
+      ['.mov', new Set(['video/quicktime'])],
+      ['.webm', new Set(['video/webm'])],
+      ['.mkv', new Set(['video/x-matroska', 'video/matroska'])],
+      ['.avi', new Set(['video/x-msvideo', 'video/avi'])],
+      ['.mpeg', new Set(['video/mpeg'])],
+      ['.mpg', new Set(['video/mpeg'])],
+      ['.m4v', new Set(['video/x-m4v', 'video/mp4'])]
+    ]);
+    const originalName = String(file.originalname || '');
+    const ext = path.extname(originalName).toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    const safeName = originalName.length <= 255 &&
+      !/[\\/:]/.test(originalName) &&
+      !/[\u0000-\u001f\u007f]/.test(originalName) &&
+      path.basename(originalName) === originalName;
+    if (!safeName || !allowedByExtension.has(ext) || !allowedByExtension.get(ext).has(mime)) {
+      return cb(new Error('Unsupported media type. Upload a permitted video format.'));
+    }
     cb(null, true);
   }
 });
@@ -87,6 +103,10 @@ try {
 
 const allowedOrigins = String(process.env.APP_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(x => x.trim()).filter(Boolean);
 const paidGenerationAllowed = process.env.ALLOW_PAID_GENERATION === 'true';
+const PAID_PROVIDER_IDS = new Set(['luma-ray-flash', 'luma-ray-2']);
+function rejectDisabledPaidProvider(provider) {
+  return !paidGenerationAllowed && PAID_PROVIDER_IDS.has(String(provider || '').trim());
+}
 const renderJobTimeoutMs = Math.min(Math.max(Number(process.env.RENDER_JOB_TIMEOUT_MS || 10 * 60 * 1000), 30_000), 30 * 60 * 1000);
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -374,7 +394,7 @@ function validateUploadedVideo(filepath) {
       clearTimeout(timer);
       if (code !== 0) return reject(new Error('The uploaded file is not a valid supported video.'));
       const formats = new Set(output.trim().split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
-      const allowed = ['mov','mp4','m4a','3gp','3g2','mj2','matroska','webm','avi','mpeg'];
+      const allowed = ['mov','mp4','matroska','webm','avi','mpeg'];
       if (!allowed.some(format => formats.has(format))) return reject(new Error('The uploaded file format is not allowed.'));
       resolve(true);
     });
@@ -1186,13 +1206,14 @@ app.post('/api/projects/:projectId/entities', async (req, res) => {
   }
 });
 
-app.post('/api/projects/:projectId/entity-events', async (req, res) => {
+app.post('/api/projects/:projectId/entity-events', requireProjectAccess, async (req, res) => {
   try {
     const database = await getDatabaseStatus();
     if (!database.enabled) return res.status(503).json({ error: 'Entity event storage is unavailable because the database is not configured.', database });
     if (!database.connected) return res.status(503).json({ error: 'Entity event storage is unavailable because the database is not connected.', database });
     await recordEntityEvent({
       projectId: req.params.projectId,
+      ownerUserId: req.authUserId,
       sceneId: req.body?.sceneId,
       shotId: req.body?.shotId,
       entityId: req.body?.entityId,
@@ -1367,6 +1388,9 @@ app.get('/api/workers', async (req, res) => {
 app.post('/api/media/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateMediaGenerateInput(req.body || {});
+    if (rejectDisabledPaidProvider(input.provider || input.providerId)) {
+      return res.status(400).json({ error: 'Paid provider use is disabled. Explicitly enable paid generation before using Luma.' });
+    }
     const task = normalizeMediaTask(input);
     task.sound = normalizeSoundPlan(req.body?.sound || {});
     validateMediaTask(task);
@@ -1433,6 +1457,9 @@ app.get('/api/generations', async (req, res) => {
 app.post('/api/generate', generationRateLimit, async (req, res) => {
   try {
     const input = validateGenerateInput(req.body || {});
+    if (rejectDisabledPaidProvider(input.provider || input.providerId)) {
+      return res.status(400).json({ error: 'Paid provider use is disabled. Explicitly enable paid generation before using Luma.' });
+    }
     const ownerUserId = getSessionUserId(req);
     if (!ownerUserId) return res.status(401).json({ error: 'A user session is required for generation.' });
     const project = input.projectId ? await getOwnedProject(String(input.projectId), ownerUserId) : null;
