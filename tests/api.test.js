@@ -264,8 +264,20 @@ test('project entity events and generation reads are owner-scoped', { skip: !ena
   const created = await userA.post('/api/film/projects').send({ title: 'Entity Isolation' });
   assert.equal(created.status, 201);
   const projectId = created.body.project.id;
-  assert.equal((await userA.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'blue' } })).status, 200);
-  assert.equal((await userB.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'red' } })).status, 404);
+  const entityId = 'entity-' + suffix;
+  const createdEntity = await userA.post('/api/projects/' + projectId + '/entities')
+    .send({ entities: [{ id: entityId, type: 'character', name: 'Private Entity', state: { wardrobe: 'blue' } }] });
+  assert.equal(createdEntity.status, 200);
+  assert.equal((await userA.post('/api/projects/' + projectId + '/entity-events')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'blue' } })).status, 200);
+
+  assert.equal((await userB.get('/api/projects/' + projectId + '/entities')).status, 404);
+  assert.equal((await userB.get('/api/projects/' + projectId + '/entities/' + entityId + '/state')).status, 404);
+  assert.equal((await userB.post('/api/projects/' + projectId + '/entity-events')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'red' } })).status, 404);
+  assert.equal((await api.post('/api/projects/' + projectId + '/entity-events')
+    .set('Authorization', 'Bearer ci-bearer-token')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'green' } })).status, 401);
 });
 
 test('legacy null-owner generations are never readable through owner-scoped queries', { skip: !enabled }, async () => {
