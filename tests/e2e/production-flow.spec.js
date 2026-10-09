@@ -34,7 +34,7 @@ test('login → generate → export production flow', async ({ page }) => {
     })
   }));
 
-  await page.route('**generate*', route => {
+  await page.route('**/api/generate', route => {
     generateRequestSeen = true;
     return route.fulfill({
       status: 202,
@@ -46,11 +46,31 @@ test('login → generate → export production flow', async ({ page }) => {
     });
   });
 
-  await page.route('**/api/jobs/e2e-job-1/events', route => { jobEventsSeen = true; return route.fulfill({
-    status: 404,
-    contentType: 'application/json',
-    body: JSON.stringify({ error: 'stream unavailable in fixture' })
-  }); });
+  await page.route('**/api/jobs/e2e-job-1/events', route => {
+    jobEventsSeen = true;
+    const job = {
+      id: 'e2e-job-1',
+      status: 'completed',
+      result: {
+        provider: 'test',
+        status: 'Completed',
+        videoUrl: '/output/e2e.mp4',
+        generation: {
+          id: 'e2e-generation',
+          output: '/output/e2e.mp4',
+          provider: 'test',
+          model: 'test-model',
+          mode: 'text-to-video',
+          duration: 4
+        }
+      }
+    };
+    return route.fulfill({
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' },
+      body: `event: job\ndata: ${JSON.stringify(job)}\n\n`
+    });
+  });
 
   await page.route('**/api/jobs/e2e-job-1', route => route.fulfill({
     status: 200,
@@ -118,37 +138,14 @@ test('login → generate → export production flow', async ({ page }) => {
   await expect(page.getByText('Generate a shot')).toBeVisible({ timeout: 10_000 });
   const shotPrompt = page.locator('textarea[placeholder*="Describe the shot you want"]').first();
   await expect(shotPrompt).toBeVisible({ timeout: 10_000 });
-  await shotPrompt.fill('');
-  await shotPrompt.pressSequentially('A cinematic test shot', { delay: 5 });
+  await shotPrompt.fill('A cinematic test shot');
   await expect(shotPrompt).toHaveValue('A cinematic test shot');
-  await page.waitForTimeout(500);
-  const generateResponse = await page.evaluate(async (projectId) => {
-    const response = await fetch('/api/generate', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: 'huggingface-ltx',
-        prompt: 'A cinematic test shot',
-        duration: 4,
-        ratio: '16:9',
-        framing: 'medium shot',
-        cameraMovement: 'slow push-in',
-        lighting: 'natural cinematic',
-        projectId
-      })
-    });
-    return { status: response.status, body: await response.json() };
-  }, projectId);
-  expect(generateResponse.status).toBe(202);
+  const generateButton = page.getByRole('button', { name: /Generate cinematic shot/i });
+  await expect(generateButton).toBeEnabled();
+  await generateButton.click();
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
-
-  const eventProbe = await page.evaluate(async () => {
-    const response = await fetch('/api/jobs/e2e-job-1/events', { credentials: 'include' });
-    return response.status;
-  });
-  expect(eventProbe).toBe(404);
   await expect.poll(() => jobEventsSeen, { timeout: 10_000 }).toBe(true);
+  await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole('button', { name: 'Export timeline', exact: true }).click();
   await expect.poll(() => exportRequestSeen, { timeout: 10_000 }).toBe(true);

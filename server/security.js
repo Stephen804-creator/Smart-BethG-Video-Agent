@@ -169,22 +169,34 @@ export function rateLimitMiddleware({ limit, windowMs, keyPrefix }) {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const userId = req.authUserId || null;
     const email = String(req.body?.email || '').trim().toLowerCase();
-    // Authentication endpoints have no user identity yet, so bind the bucket to
-    // the submitted account plus the trusted client IP. Authenticated APIs use
-    // the session identity, preventing a shared reverse-proxy IP from becoming
-    // one global bucket for every user.
-    const identity = userId || (email ? `email:${email}:ip:${ip}` : `ip:${ip}`);
-    const key = `${keyPrefix}:${identity}`;
-    let result = null;
-    try {
-      if (process.env.DATABASE_URL) result = await consumeRateLimitFromDatabase(key, { limit, windowMs });
-    } catch {}
-    if (!result) result = consumeRateLimit(key, { limit, windowMs });
+    // Apply independent account and client limits. An account bucket follows
+    // the email across IP changes; the higher IP bucket prevents attackers
+    // from bypassing limits by trying many different email addresses. Using
+    // req.ip (with the deployment's explicit trusted-proxy setting) avoids
+    // putting every Render user in one shared proxy-IP bucket.
+    const bucketsToCheck = userId
+      ? [{ identity: `user:${userId}`, limit }]
+      : email
+        ? [{ identity: `email:${email}`, limit }, { identity: `ip:${ip}`, limit: Math.max(limit * 5, 100) }]
+        : [{ identity: `ip:${ip}`, limit }];
+    const results = [];
+    for (const bucket of bucketsToCheck) {
+      const key = `${keyPrefix}:${bucket.identity}`;
+      let result = null;
+      try {
+        if (process.env.DATABASE_URL) result = await consumeRateLimitFromDatabase(key, { limit: bucket.limit, windowMs });
+      } catch {}
+      if (!result) result = consumeRateLimit(key, { limit: bucket.limit, windowMs });
+      results.push({ ...result, limit: bucket.limit });
+    }
 
-    res.setHeader('X-RateLimit-Limit', String(limit));
-    res.setHeader('X-RateLimit-Remaining', String(result.remaining));
-    if (!result.allowed) {
-      res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
+    const blocked = results.find(result => !result.allowed);
+    const effectiveLimit = Math.min(...results.map(result => result.limit));
+    const effectiveRemaining = Math.min(...results.map(result => result.remaining));
+    res.setHeader('X-RateLimit-Limit', String(effectiveLimit));
+    res.setHeader('X-RateLimit-Remaining', String(effectiveRemaining));
+    if (blocked) {
+      res.setHeader('Retry-After', String(Math.ceil(blocked.retryAfterMs / 1000)));
       return res.status(429).json({ error: 'Rate limit exceeded. Try again later.' });
     }
     return next();
