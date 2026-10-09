@@ -96,7 +96,26 @@ test('rejected uploads are cleaned up and unsupported media is refused', { skip:
   assert.equal(after.length, before.length);
 });
 
-test('invalid media content is rejected and temporary upload files are cleaned', { skip: !enabled }, async () => {\n  const suffix = Date.now();\n  const agent = request.agent('http://127.0.0.1:8787');\n  const email = 'upload-spoof-' + suffix + '@example.test';\n  const password = 'correct-horse-battery-spoof';\n  await agent.post('/api/auth/register').send({ email, password });\n  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);\n  const project = await agent.post('/api/film/projects').send({ title: 'Upload Validation Security' });\n  assert.equal(project.status, 201);\n  const fs = await import('node:fs/promises');\n  const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;\n  const before = await fs.readdir(uploadDir).catch(() => []);\n  const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')\n    .attach('file', Buffer.from('not a video container'), { filename: 'fake.mp4', contentType: 'video/mp4' });\n  assert.equal(response.status, 400);\n  const after = await fs.readdir(uploadDir).catch(() => []);\n  assert.equal(after.length, before.length);\n});\n\ntest('registration, login, status and logout work through session cookies', { skip: !enabled }, async () => {
+test('invalid media content is rejected and temporary upload files are cleaned', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = 'upload-spoof-' + suffix + '@example.test';
+  const password = 'correct-horse-battery-spoof';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const project = await agent.post('/api/film/projects').send({ title: 'Upload Validation Security' });
+  assert.equal(project.status, 201);
+  const fs = await import('node:fs/promises');
+  const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
+  const before = await fs.readdir(uploadDir).catch(() => []);
+  const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
+    .attach('file', Buffer.from('not a video container'), { filename: 'fake.mp4', contentType: 'video/mp4' });
+  assert.equal(response.status, 400);
+  const after = await fs.readdir(uploadDir).catch(() => []);
+  assert.equal(after.length, before.length);
+});
+
+test('registration, login, status and logout work through session cookies', { skip: !enabled }, async () => {
   const suffix = Date.now();
   const email = `auth-${suffix}@example.test`;
   const password = 'correct-horse-battery-3';
