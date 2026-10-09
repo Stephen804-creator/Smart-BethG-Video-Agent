@@ -68,7 +68,7 @@ test('login → generate → export production flow', async ({ page }) => {
     return route.fulfill({
       status: 200,
       headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' },
-      body: `event: job\\ndata: ${JSON.stringify(job)}\\n\\n`
+      body: `event: job\ndata: ${JSON.stringify(job)}\n\n`
     });
   });
 
