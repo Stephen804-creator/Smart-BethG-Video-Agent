@@ -34,7 +34,7 @@ test('login → generate → export production flow', async ({ page }) => {
     })
   }));
 
-  await page.route('**generate*', route => {
+  await page.route('**/api/generate', route => {
     generateRequestSeen = true;
     return route.fulfill({
       status: 202,
@@ -141,6 +141,7 @@ test('login → generate → export production flow', async ({ page }) => {
     return { status: response.status, body: await response.json() };
   }, projectId);
   expect(generateResponse.status).toBe(202);
+  expect(generateResponse.body.job.id).toBe('e2e-job-1');
   await expect.poll(() => generateRequestSeen, { timeout: 10_000 }).toBe(true);
 
   const eventProbe = await page.evaluate(async () => {
