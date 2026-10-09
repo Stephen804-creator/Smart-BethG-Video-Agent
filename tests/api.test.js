@@ -233,6 +233,28 @@ test('two users cannot read or mutate each other\'s film projects or jobs', { sk
   assert.equal(foreignCancel.status, 404);
 });
 
+test('canonical database ownership removal invalidates a stale cached project', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = 'owner-revoked-' + suffix + '@example.test';
+  const password = 'correct-horse-battery-owner';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const created = await agent.post('/api/film/projects').send({ title: 'Owner Revocation Test' });
+  assert.equal(created.status, 201);
+  const projectId = created.body.project.id;
+  const userId = (await agent.get('/api/auth/status')).body.user.id;
+  const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: true } });
+  try {
+    await db.query('UPDATE media_projects SET owner_user_id=NULL WHERE id=$1 AND owner_user_id=$2', [projectId, userId]);
+    assert.equal((await agent.get('/api/film/projects/' + projectId)).status, 404);
+    assert.equal((await agent.patch('/api/film/projects/' + projectId).send({ title: 'Should remain inaccessible' })).status, 404);
+  } finally {
+    await db.query('DELETE FROM media_projects WHERE id=$1', [projectId]).catch(() => {});
+    await db.end();
+  }
+});
+
 test('generation continuity import cannot cross user ownership', { skip: !enabled }, async () => {
   const suffix = Date.now();
   const userA = request.agent('http://127.0.0.1:8787');
