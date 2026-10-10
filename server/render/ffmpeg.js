@@ -103,7 +103,12 @@ export async function renderShot({ inputPath, outputDir, edit = {}, effects = {}
   const filename = 'render-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8) + '.mp4';
   const outputPath = path.join(outputDir, filename);
   args.push(outputPath);
-  await run('ffmpeg', args);
+  try {
+    await run('ffmpeg', args);
+  } catch (error) {
+    try { fs.unlinkSync(outputPath); } catch {}
+    throw error;
+  }
 
   return {
     filename, outputPath, output: '/output/' + filename,
