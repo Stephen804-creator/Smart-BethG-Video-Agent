@@ -101,7 +101,9 @@ export function createJobQueue({
             job.status = 'failed';
             job.error = error?.message || 'Could not claim queued job.';
             job.completedAt = new Date().toISOString();
-            persist(job);
+            await persist(job);
+            jobs.delete(job.id);
+            rememberTerminal(job);
             continue;
           }
           if (!claimed) { jobs.delete(job.id); continue; }
