@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import request from 'supertest';
 import pg from 'pg';
-import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase } from '../server/database.js';
+import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase, listJobsFromDatabase } from '../server/database.js';
 import { assertSafeComfyUrl } from '../server/security/outbound.js';
 
 const enabled = process.env.RUN_API_TESTS === '1';
@@ -306,8 +306,23 @@ test('paid-provider selection cannot be enabled by a client request', { skip: !e
     duration: 4,
     allowPaid: true
   });
-  assert.equal(response.status, 400);
-  assert.match(response.body.error, /Paid provider use is disabled/i);
+
+  // Requests are queued; paid-generation permission must come from server
+  // configuration, never from the client-provided allowPaid field.
+  assert.equal(response.status, 202);
+  assert.equal(response.body.status, 'Queued');
+  const user = await getUserByEmail(email);
+  assert.ok(user);
+  let storedJob = null;
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const jobs = await listJobsFromDatabase(user.id, 100);
+    storedJob = jobs.find(job => job.id === response.body.job.id) || null;
+    if (storedJob) break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(storedJob, 'queued job should be persisted in PostgreSQL');
+  assert.equal(storedJob.payload.allowPaid, false);
 });
 
 test('CGNAT addresses are blocked by the outbound guard', { skip: !enabled }, async () => {
