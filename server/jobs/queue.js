@@ -46,8 +46,20 @@ export function createJobQueue({
   }
 
   function persist(job) {
-    try { if (typeof onChange === 'function') onChange(persisted(job)); } catch {}
+    // Snapshot the state now, then serialize durable writes for this job. Without
+    // this chain, enqueue() can race the database claim and terminal writes can
+    // overtake earlier state writes.
+    const record = persisted(job);
+    const previous = job.persistChain || Promise.resolve(true);
+    job.persistChain = previous.then(async () => {
+      if (typeof onChange === 'function') await onChange(record);
+      return true;
+    }).catch(error => {
+      job.persistenceError = error;
+      return false;
+    });
     emit(job);
+    return job.persistChain;
   }
 
   function rememberTerminal(job) {
@@ -69,6 +81,19 @@ export function createJobQueue({
         const job = pending.shift();
         if (!job || job.status === 'cancelled') continue;
 
+        // The initial queued record must be durable before a worker claims it.
+        // Otherwise a fast claim can race the INSERT and silently discard the job.
+        const initiallyPersisted = await (job.persistChain || Promise.resolve(true));
+        if (!initiallyPersisted) {
+          job.status = 'failed';
+          job.error = 'Job could not be persisted; no worker was allowed to execute it.';
+          job.completedAt = new Date().toISOString();
+          await persist(job);
+          jobs.delete(job.id);
+          rememberTerminal(job);
+          continue;
+        }
+
         if (typeof claim === 'function') {
           let claimed = false;
           try { claimed = await claim(job.id, job.ownerUserId); }
@@ -85,7 +110,18 @@ export function createJobQueue({
         active += 1;
         job.status = 'running';
         job.startedAt = new Date().toISOString();
-        persist(job);
+        const runningPersisted = await persist(job);
+        if (!runningPersisted) {
+          job.status = 'failed';
+          job.error = 'Job state could not be persisted before execution.';
+          job.completedAt = new Date().toISOString();
+          await persist(job);
+          try { if (typeof release === 'function') await release(job.id); } catch {}
+          jobs.delete(job.id);
+          rememberTerminal(job);
+          active -= 1;
+          continue;
+        }
 
         const controller = new AbortController();
         job.controller = controller;
@@ -120,7 +156,7 @@ export function createJobQueue({
             job.completedAt = new Date().toISOString();
             job.controller = null;
             if (heartbeatTimer) clearInterval(heartbeatTimer);
-            persist(job);
+            await persist(job);
             try { if (typeof release === 'function') await release(job.id); } catch {}
             jobs.delete(job.id);
             rememberTerminal(job);
