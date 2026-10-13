@@ -8,7 +8,7 @@
     "server": "node server/index.js",
     "client": "vite --host 0.0.0.0",
     "build": "vite build --config client/vite.config.js",
-    "test": "node --test server/evaluation/*.test.js",
+    "test": "node --test server/evaluation/*.test.js tests/jobs/*.test.js",
     "start": "node server/index.js",
     "test:e2e": "playwright test",
     "test:api": "RUN_API_TESTS=1 node --test tests/api.test.js",
