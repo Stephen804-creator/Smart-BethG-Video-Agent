@@ -66,7 +66,7 @@ const workerId = process.env.WORKER_ID || `cinematic-${process.pid}-${Math.rando
 const generationQueue = createJobQueue({
   concurrency: Number(process.env.GENERATION_CONCURRENCY || 1),
   maxQueue: Number(process.env.GENERATION_MAX_QUEUE || 10),
-  onChange: job => { void saveJobToDatabase(job).catch(error => console.error('Job persistence failed:', error?.message || error)); },
+  onChange: job => saveJobToDatabase(job),
   claim: (id, ownerUserId) => claimJob(id, ownerUserId, workerId),
   heartbeat: id => heartbeatJob(id, workerId),
   release: id => releaseJobClaim(id, workerId)
