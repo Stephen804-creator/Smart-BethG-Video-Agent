@@ -88,7 +88,7 @@ test('rejected uploads are cleaned up and unsupported media is refused', { skip:
   const project = await agent.post('/api/film/projects').send({ title: 'Upload Security' });
   assert.equal(project.status, 201);
   const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
-  const before = (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  const before = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
   const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
     .attach('file', Buffer.from('not a video'), 'malware.txt');
   assert.equal(response.status, 400);
