@@ -243,7 +243,10 @@ async function getOwnedProject(projectId, userId) {
   if (!projectId || !userId || userId === 'admin') return null;
   if (process.env.DATABASE_URL) {
     const canonical = await getFilmProjectFromDatabase(projectId, userId);
-    if (canonical) filmStore.replaceProjects([canonical]);
+    // The database is authoritative: a cache entry must never revive a project
+    // whose owner was removed, changed, or whose row no longer exists.
+    if (!canonical) return null;
+    filmStore.replaceProjects([canonical]);
   }
   const project = filmStore.getProject(projectId);
   return project && project.ownerUserId === userId ? project : null;
@@ -365,7 +368,7 @@ function getVideoResult(data) {
 
 function validateUploadedVideo(filepath) {
   return new Promise((resolve, reject) => {
-    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file', '-v', 'error', '-show_entries', 'format=format_name', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
+    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file', '-format_whitelist', 'mov,matroska,webm,avi,mpegvideo', '-max_alloc', '100000000', '-analyzeduration', '10000000', '-probesize', '10000000', '-v', 'error', '-show_entries', 'format=format_name', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
     let output = '';
     const timer = setTimeout(() => { probe.kill('SIGKILL'); reject(new Error('Uploaded media validation timed out.')); }, 30_000);
     probe.stdout.on('data', chunk => { output += chunk.toString(); });
@@ -772,13 +775,13 @@ app.post('/api/film/projects', async (req, res) => {
 
 app.get('/api/film/projects/:projectId', async (req, res) => {
   const project = filmStore.getProject(req.params.projectId);
-  if (!project || (project.ownerUserId && project.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
+  if (!project || !getSessionUserId(req) || project.ownerUserId !== getSessionUserId(req)) return res.status(404).json({ error: 'Film project not found.' });
   res.json({ project });
 });
 
 app.patch('/api/film/projects/:projectId', async (req, res) => {
   const existing = filmStore.getProject(req.params.projectId);
-  if (!existing || (existing.ownerUserId && existing.ownerUserId !== getSessionUserId(req))) return res.status(404).json({ error: 'Film project not found.' });
+  if (!existing || !getSessionUserId(req) || existing.ownerUserId !== getSessionUserId(req)) return res.status(404).json({ error: 'Film project not found.' });
   const project = filmStore.updateProject(req.params.projectId, req.body || {});
   if (!project) return res.status(404).json({ error: 'Film project not found.' });
 

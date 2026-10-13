@@ -88,12 +88,54 @@ test('rejected uploads are cleaned up and unsupported media is refused', { skip:
   const project = await agent.post('/api/film/projects').send({ title: 'Upload Security' });
   assert.equal(project.status, 201);
   const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
-  const before = (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  const before = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
   const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
     .attach('file', Buffer.from('not a video'), 'malware.txt');
   assert.equal(response.status, 400);
   const after = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
   assert.equal(after.length, before.length);
+});
+
+test('invalid media content is rejected and temporary upload files are cleaned', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = 'upload-spoof-' + suffix + '@example.test';
+  const password = 'correct-horse-battery-spoof';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const project = await agent.post('/api/film/projects').send({ title: 'Upload Validation Security' });
+  assert.equal(project.status, 201);
+  const fs = await import('node:fs/promises');
+  const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
+  const before = await fs.readdir(uploadDir).catch(() => []);
+  const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
+    .attach('file', Buffer.from('not a video container'), { filename: 'fake.mp4', contentType: 'video/mp4' });
+  assert.equal(response.status, 400);
+  const after = await fs.readdir(uploadDir).catch(() => []);
+  assert.equal(after.length, before.length);
+});
+
+test('database ownership removal cannot be bypassed by a cached project', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = 'ownerless-project-' + suffix + '@example.test';
+  const password = 'correct-horse-battery-ownerless';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const created = await agent.post('/api/film/projects').send({ title: 'Ownerless Cache Guard' });
+  assert.equal(created.status, 201);
+  const projectId = created.body.project.id;
+  const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: true } });
+  try {
+    await db.query('UPDATE media_projects SET owner_user_id=NULL WHERE id=$1', [projectId]);
+    const response = await agent.get('/api/film/projects/' + projectId);
+    assert.equal(response.status, 404);
+    const list = await agent.get('/api/film/projects');
+    assert.equal((list.body.projects || []).some(project => project.id === projectId), false);
+  } finally {
+    await db.query('DELETE FROM media_projects WHERE id=$1', [projectId]).catch(() => {});
+    await db.end();
+  }
 });
 
 test('registration, login, status and logout work through session cookies', { skip: !enabled }, async () => {
