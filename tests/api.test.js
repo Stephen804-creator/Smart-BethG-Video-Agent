@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import request from 'supertest';
 import pg from 'pg';
-import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase } from '../server/database.js';
+import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase, listJobsFromDatabase } from '../server/database.js';
 import { assertSafeComfyUrl } from '../server/security/outbound.js';
 
 const enabled = process.env.RUN_API_TESTS === '1';
@@ -62,10 +62,14 @@ test('API requires authentication for protected routes', { skip: !enabled }, asy
   assert.equal(headers.headers['permissions-policy'], 'camera=\(\), microphone=\(\), geolocation=\(\)');
 });
 
-test('bearer tokens never acquire a user identity for owner-scoped resources', { skip: !enabled }, async () => {
+test('bearer tokens never acquire a user identity for owner-scoped resources or private media', { skip: !enabled }, async () => {
   const response = await api.get('/api/generations').set('Authorization', 'Bearer ci-bearer-token');
   assert.equal(response.status, 401);
   assert.match(response.body.error, /user session/i);
+
+  const output = await api.get('/output/private-test.mp4').set('Authorization', 'Bearer ci-bearer-token');
+  assert.equal(output.status, 401);
+  assert.match(output.body.error, /user session/i);
 });
 
 test('registration does not reveal whether an email already exists', { skip: !enabled }, async () => {
@@ -88,11 +92,30 @@ test('rejected uploads are cleaned up and unsupported media is refused', { skip:
   const project = await agent.post('/api/film/projects').send({ title: 'Upload Security' });
   assert.equal(project.status, 201);
   const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
-  const before = (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  const before = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
   const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
     .attach('file', Buffer.from('not a video'), 'malware.txt');
   assert.equal(response.status, 400);
   const after = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  assert.equal(after.length, before.length);
+});
+
+test('spoofed video uploads are rejected by content probing and cleaned up', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = `upload-spoof-${suffix}@example.test`;
+  const password = 'correct-horse-battery-spoof';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const project = await agent.post('/api/film/projects').send({ title: 'Upload Content Validation' });
+  assert.equal(project.status, 201);
+  const fs = await import('node:fs/promises');
+  const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
+  const before = await fs.readdir(uploadDir).catch(() => []);
+  const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
+    .attach('file', Buffer.from('not a video container'), { filename: 'fake.mp4', contentType: 'video/mp4' });
+  assert.equal(response.status, 400);
+  const after = await fs.readdir(uploadDir).catch(() => []);
   assert.equal(after.length, before.length);
 });
 
@@ -192,6 +215,23 @@ test('two users cannot read or mutate each other\'s film projects or jobs', { sk
     .send({ title: 'Should not be allowed' });
   assert.equal(foreignMutation.status, 404);
 
+  // Every nested project route must authorize ownership before touching state,
+  // queueing work, or invoking multipart upload parsing.
+  const foreignStoryEdit = await userB.patch('/api/film/projects/' + projectId + '/story')
+    .send({ synopsis: 'Unauthorized overwrite' });
+  assert.equal(foreignStoryEdit.status, 404);
+
+  const foreignRender = await userB.post('/api/film/projects/' + projectId + '/shots/not-owned-shot/render')
+    .send({});
+  assert.equal(foreignRender.status, 404);
+
+  const foreignUpload = await userB.post('/api/film/projects/' + projectId + '/assets/upload')
+    .attach('file', Buffer.from('unauthorized upload'), { filename: 'probe.mp4', contentType: 'video/mp4' });
+  assert.equal(foreignUpload.status, 404);
+
+  const foreignAssets = await userB.get('/api/film/projects/' + projectId + '/assets');
+  assert.equal(foreignAssets.status, 404);
+
   const queued = await userA.post('/api/generate').send({
     provider: 'comfyui',
     prompt: 'Isolation test shot',
@@ -245,8 +285,37 @@ test('project entity events and generation reads are owner-scoped', { skip: !ena
   const created = await userA.post('/api/film/projects').send({ title: 'Entity Isolation' });
   assert.equal(created.status, 201);
   const projectId = created.body.project.id;
-  assert.equal((await userA.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'blue' } })).status, 200);
-  assert.equal((await userB.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'red' } })).status, 404);
+  const entityId = 'entity-' + suffix;
+  const entities = await userA.post('/api/projects/' + projectId + '/entities')
+    .send({ entities: [{ id: entityId, type: 'character', name: 'Private Character', state: { wardrobe: 'blue' } }] });
+  assert.equal(entities.status, 200, JSON.stringify(entities.body));
+  const ownEvent = await userA.post('/api/projects/' + projectId + '/entity-events')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'blue' } });
+  assert.equal(ownEvent.status, 200, JSON.stringify(ownEvent.body));
+  const foreignEvent = await userB.post('/api/projects/' + projectId + '/entity-events')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'red' } });
+  assert.equal(foreignEvent.status, 404);
+});
+
+test('database ownership removal cannot be bypassed by a cached project', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = 'ownerless-project-' + suffix + '@example.test';
+  const password = 'correct-horse-battery-ownerless';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const created = await agent.post('/api/film/projects').send({ title: 'Ownerless Cache Guard' });
+  assert.equal(created.status, 201);
+  const projectId = created.body.project.id;
+  const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: true } });
+  try {
+    await db.query('UPDATE media_projects SET owner_user_id=NULL WHERE id=$1', [projectId]);
+    const response = await agent.get('/api/film/projects/' + projectId);
+    assert.equal(response.status, 404);
+  } finally {
+    await db.query('DELETE FROM media_projects WHERE id=$1', [projectId]).catch(() => {});
+    await db.end();
+  }
 });
 
 test('legacy null-owner generations are never readable through owner-scoped queries', { skip: !enabled }, async () => {
@@ -306,8 +375,22 @@ test('paid-provider selection cannot be enabled by a client request', { skip: !e
     duration: 4,
     allowPaid: true
   });
-  assert.equal(response.status, 400);
-  assert.match(response.body.error, /Paid provider use is disabled/i);
+  // Requests are queued; paid-generation permission must come from server
+  // configuration, never from the client-provided allowPaid field.
+  assert.equal(response.status, 202);
+  assert.equal(response.body.status, 'Queued');
+  const user = await getUserByEmail(email);
+  assert.ok(user);
+  let storedJob = null;
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const jobs = await listJobsFromDatabase(user.id, 100);
+    storedJob = jobs.find(job => job.id === response.body.job.id) || null;
+    if (storedJob) break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(storedJob, 'queued job should be persisted in PostgreSQL');
+  assert.equal(storedJob.payload.allowPaid, false);
 });
 
 test('CGNAT addresses are blocked by the outbound guard', { skip: !enabled }, async () => {
