@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test-and-build:
@@ -53,6 +53,25 @@ jobs:
           name: generated-package-lock
           path: package-lock.json
           retention-days: 1
+      # TEMPORARY: commit the generated lockfile to this working branch once.
+      - name: Commit generated package lock (temporary)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'fix/node22-lockfile-reconciliation'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp package-lock.json /tmp/generated-package-lock.json
+          git fetch origin "$GITHUB_HEAD_REF"
+          git checkout -B "$GITHUB_HEAD_REF" "origin/$GITHUB_HEAD_REF"
+          cp /tmp/generated-package-lock.json package-lock.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "Generated package lock already matches the branch."
+            exit 0
+          fi
+          git commit -m "chore: regenerate package lock for Node 22"
+          git push origin "$GITHUB_HEAD_REF"
       - name: Install locked dependencies
         run: npm ci
       - name: Run unit and render tests
