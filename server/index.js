@@ -66,7 +66,9 @@ const upload = multer({
     const ext = path.extname(originalName).toLowerCase();
     const mime = String(file.mimetype || '').toLowerCase();
     const safeName = originalName.length <= 255 &&
-      !/[\\/:]/.test(originalName) &&
+      !originalName.includes('/') &&
+      !originalName.includes('\\\\') &&
+      !originalName.includes(':') &&
       !/[\u0000-\u001f\u007f]/.test(originalName) &&
       path.basename(originalName) === originalName;
     if (!safeName || !allowedByExtension.has(ext) || !allowedByExtension.get(ext).has(mime)) {
