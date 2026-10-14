@@ -277,9 +277,6 @@ app.use('/api/projects', requireUserIdentity);
 app.use('/api/jobs', requireUserIdentity);
 app.use('/api/generations', requireUserIdentity);
 
-// Guard every project-scoped route before its handler can read or mutate the
-// in-memory store, enqueue work, or parse multipart uploads.
-app.use('/api/film/projects/:projectId', requireProjectAccess);
 app.use('/api/production', requireUserIdentity);
 
 app.use('/api/film/projects/:projectId', requireProjectAccess);
