@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import request from 'supertest';
 import pg from 'pg';
-import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase } from '../server/database.js';
+import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase, getFilmProjectFromDatabase } from '../server/database.js';
 import { assertSafeComfyUrl } from '../server/security/outbound.js';
 
 const enabled = process.env.RUN_API_TESTS === '1';
@@ -212,6 +212,49 @@ test('two users cannot read or mutate each other\'s film projects or jobs', { sk
 
   const foreignCancel = await userB.post('/api/jobs/' + jobId + '/cancel');
   assert.equal(foreignCancel.status, 404);
+});
+
+test('asset creation and generation import persist the canonical project to PostgreSQL', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = `project-persistence-${suffix}@example.test`;
+  const password = 'correct-horse-battery-persistence';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const created = await agent.post('/api/film/projects').send({ title: 'Project Persistence' });
+  assert.equal(created.status, 201);
+  const projectId = created.body.project.id;
+  const userId = (await agent.get('/api/auth/status')).body.user.id;
+
+  const asset = await agent.post('/api/film/projects/' + projectId + '/assets').send({
+    id: 'asset-persist-' + suffix,
+    name: 'Persisted metadata asset',
+    filename: 'generated.mp4',
+    sourceType: 'generated',
+    uri: '/output/generated.mp4',
+    mimeType: 'video/mp4'
+  });
+  assert.equal(asset.status, 201, JSON.stringify(asset.body));
+
+  const generationId = 'project-import-persist-' + suffix;
+  await saveGenerationToDatabase({
+    id: generationId,
+    ownerUserId: userId,
+    projectId,
+    provider: 'test',
+    operation: 'text-to-video',
+    output: '/output/imported.mp4',
+    prompt: 'PostgreSQL project persistence test',
+    requirements: { duration: 4 }
+  });
+  const imported = await agent.post('/api/film/projects/' + projectId + '/import-generation').send({ generationId });
+  assert.equal(imported.status, 201, JSON.stringify(imported.body));
+
+  const canonical = await getFilmProjectFromDatabase(projectId, userId);
+  assert.ok(canonical, 'canonical project should be present in PostgreSQL');
+  assert.ok(canonical.assets.some(item => item.id === 'asset-persist-' + suffix));
+  assert.ok(canonical.assets.some(item => item.id === 'asset-' + generationId));
+  assert.ok(canonical.takes.some(item => item.id === 'take-' + generationId));
 });
 
 test('generation continuity import cannot cross user ownership', { skip: !enabled }, async () => {
