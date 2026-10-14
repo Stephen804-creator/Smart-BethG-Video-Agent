@@ -40,18 +40,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Install dependencies
-        run: npm install
-      - name: Refresh lockfile resolutions
-        run: npm install --package-lock-only --ignore-scripts
+      - name: Install locked dependencies
+        run: npm ci
       - name: Run unit and render tests
         run: npm test
       - name: Run API authorization tests
         run: npm run test:api
       - name: Build frontend
         run: npm run build
+      - name: Build production Docker image
+        run: docker build --tag cinematic-agent-ci .
       - name: Dependency audit
         run: npm audit --audit-level=high

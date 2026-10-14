@@ -41,11 +41,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Install dependencies
-        run: npm install
-      - name: Refresh lockfile resolutions
-        run: npm install --package-lock-only --ignore-scripts
+          node-version: 22
+      - name: Install locked dependencies
+        run: npm ci
       - name: Install Playwright browser
         run: npx playwright install chromium
       - name: Run browser flow
