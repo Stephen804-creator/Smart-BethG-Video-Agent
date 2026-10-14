@@ -914,6 +914,7 @@ app.post('/api/film/projects/:projectId/import-generation', async (req, res) => 
       notes: 'Imported AI generation ' + generation.id
     });
     if (take) filmStore.selectTake(req.params.projectId, shotId, take.id);
+    await persistFilmProject(filmStore.getProject(req.params.projectId));
     res.status(201).json({ project: filmStore.getProject(req.params.projectId), shotId, asset, take });
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not import generation into film project.' });
@@ -955,6 +956,7 @@ app.post('/api/film/projects/:projectId/assets/upload', (req, res, next) => uplo
       notes: req.body?.notes || ''
     });
     if (!asset) throw new Error('Could not persist the uploaded media asset.');
+    await persistFilmProject(filmStore.getProject(req.params.projectId));
     res.status(201).json({ asset });
   } catch (error) {
     if (stored?.filename) { try { fs.unlinkSync(path.join(assetDir, stored.filename)); } catch {} }
@@ -994,6 +996,7 @@ app.get('/api/film/projects/:projectId/assets', (req, res) => {
 app.post('/api/film/projects/:projectId/assets', async (req, res) => {
   const asset = filmStore.addAsset(req.params.projectId, req.body || {});
   if (!asset) return res.status(404).json({ error: 'Film project not found.' });
+  await persistFilmProject(filmStore.getProject(req.params.projectId));
   res.status(201).json({ asset });
 });
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import request from 'supertest';
 import pg from 'pg';
-import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase } from '../server/database.js';
+import { createUser, getUserByEmail, getUserById, getDatabaseStatus, saveGenerationToDatabase, listGenerationsFromDatabase, getGenerationFromDatabase, getFilmProjectFromDatabase, listJobsFromDatabase } from '../server/database.js';
 import { assertSafeComfyUrl } from '../server/security/outbound.js';
 
 const enabled = process.env.RUN_API_TESTS === '1';
@@ -88,7 +88,7 @@ test('rejected uploads are cleaned up and unsupported media is refused', { skip:
   const project = await agent.post('/api/film/projects').send({ title: 'Upload Security' });
   assert.equal(project.status, 201);
   const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
-  const before = (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  const before = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
   const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
     .attach('file', Buffer.from('not a video'), 'malware.txt');
   assert.equal(response.status, 400);
@@ -214,6 +214,49 @@ test('two users cannot read or mutate each other\'s film projects or jobs', { sk
   assert.equal(foreignCancel.status, 404);
 });
 
+test('asset creation and generation import persist the canonical project to PostgreSQL', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = `project-persistence-${suffix}@example.test`;
+  const password = 'correct-horse-battery-persistence';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const created = await agent.post('/api/film/projects').send({ title: 'Project Persistence' });
+  assert.equal(created.status, 201);
+  const projectId = created.body.project.id;
+  const userId = (await agent.get('/api/auth/status')).body.user.id;
+
+  const asset = await agent.post('/api/film/projects/' + projectId + '/assets').send({
+    id: 'asset-persist-' + suffix,
+    name: 'Persisted metadata asset',
+    filename: 'generated.mp4',
+    sourceType: 'generated',
+    uri: '/output/generated.mp4',
+    mimeType: 'video/mp4'
+  });
+  assert.equal(asset.status, 201, JSON.stringify(asset.body));
+
+  const generationId = 'project-import-persist-' + suffix;
+  await saveGenerationToDatabase({
+    id: generationId,
+    ownerUserId: userId,
+    projectId,
+    provider: 'test',
+    operation: 'text-to-video',
+    output: '/output/imported.mp4',
+    prompt: 'PostgreSQL project persistence test',
+    requirements: { duration: 4 }
+  });
+  const imported = await agent.post('/api/film/projects/' + projectId + '/import-generation').send({ generationId });
+  assert.equal(imported.status, 201, JSON.stringify(imported.body));
+
+  const canonical = await getFilmProjectFromDatabase(projectId, userId);
+  assert.ok(canonical, 'canonical project should be present in PostgreSQL');
+  assert.ok(canonical.assets.some(item => item.id === 'asset-persist-' + suffix));
+  assert.ok(canonical.assets.some(item => item.id === 'asset-' + generationId));
+  assert.ok(canonical.takes.some(item => item.id === 'take-' + generationId));
+});
+
 test('generation continuity import cannot cross user ownership', { skip: !enabled }, async () => {
   const suffix = Date.now();
   const userA = request.agent('http://127.0.0.1:8787');
@@ -306,8 +349,21 @@ test('paid-provider selection cannot be enabled by a client request', { skip: !e
     duration: 4,
     allowPaid: true
   });
-  assert.equal(response.status, 400);
-  assert.match(response.body.error, /Paid provider use is disabled/i);
+  // Generation requests are queued; client input must not enable paid use.
+  assert.equal(response.status, 202);
+  assert.equal(response.body.status, 'Queued');
+  const user = await getUserByEmail(email);
+  assert.ok(user);
+  let storedJob = null;
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const jobs = await listJobsFromDatabase(user.id, 100);
+    storedJob = jobs.find(job => job.id === response.body.job.id) || null;
+    if (storedJob) break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(storedJob, 'queued job should be persisted in PostgreSQL');
+  assert.equal(storedJob.payload.allowPaid, false);
 });
 
 test('CGNAT addresses are blocked by the outbound guard', { skip: !enabled }, async () => {
