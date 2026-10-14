@@ -50,12 +50,28 @@ const assetDir = path.join(dataDir, 'assets');
 const assetStore = createAssetStore({ rootDir: assetDir });
 const upload = multer({
   dest: path.join(dataDir, 'upload-tmp'),
-  limits: { fileSize: 500 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 500 * 1024 * 1024, files: 1, fields: 20, fieldNameSize: 100, fieldSize: 64 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedMime = new Set(['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska', 'video/x-msvideo', 'video/mpeg']);
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    const allowedExt = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.mpeg', '.mpg', '.m4v']);
-    if (!allowedMime.has(String(file.mimetype || '').toLowerCase()) || !allowedExt.has(ext)) return cb(new Error('Unsupported media type. Upload a permitted video format.'));
+    const allowedByExtension = new Map([
+      ['.mp4', new Set(['video/mp4'])],
+      ['.mov', new Set(['video/quicktime'])],
+      ['.webm', new Set(['video/webm'])],
+      ['.mkv', new Set(['video/x-matroska', 'video/matroska'])],
+      ['.avi', new Set(['video/x-msvideo', 'video/avi'])],
+      ['.mpeg', new Set(['video/mpeg'])],
+      ['.mpg', new Set(['video/mpeg'])],
+      ['.m4v', new Set(['video/x-m4v', 'video/mp4'])]
+    ]);
+    const originalName = String(file.originalname || '');
+    const ext = path.extname(originalName).toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    const safeName = originalName.length <= 255 &&
+      !/[\\/:]/.test(originalName) &&
+      !/[\u0000-\u001f\u007f]/.test(originalName) &&
+      path.basename(originalName) === originalName;
+    if (!safeName || !allowedByExtension.has(ext) || !allowedByExtension.get(ext).has(mime)) {
+      return cb(new Error('Unsupported media type. Upload a permitted video format.'));
+    }
     cb(null, true);
   }
 });
@@ -99,13 +115,13 @@ app.use((req, res, next) => {
 });
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '2mb' }));
-app.use('/output', authMiddleware, express.static(outputDir));
+app.use('/output', requireUserIdentity, express.static(outputDir));
 const servedAssetExtensions = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.mpeg', '.mpg', '.m4v']);
 function secureAssetStatic(req, res, next) {
   const filename = path.basename(req.path);
   const candidate = path.resolve(assetDir, filename);
   if (!servedAssetExtensions.has(path.extname(filename).toLowerCase()) || !candidate.startsWith(assetDir + path.sep) || !fs.existsSync(candidate)) return next();
-  return authMiddleware(req, res, () => {
+  return requireUserIdentity(req, res, () => {
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return express.static(assetDir, { fallthrough: false })(req, res, next);
@@ -369,7 +385,17 @@ function getVideoResult(data) {
 
 function validateUploadedVideo(filepath) {
   return new Promise((resolve, reject) => {
-    const probe = spawn('ffprobe', ['-protocol_whitelist', 'file', '-v', 'error', '-show_entries', 'format=format_name', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]);
+    const probe = spawn('ffprobe', [
+      '-protocol_whitelist', 'file',
+      '-format_whitelist', 'mov,matroska,webm,avi,mpegvideo',
+      '-max_alloc', '100000000',
+      '-analyzeduration', '10000000',
+      '-probesize', '10000000',
+      '-v', 'error',
+      '-show_entries', 'format=format_name',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filepath
+    ]);
     let output = '';
     const timer = setTimeout(() => { probe.kill('SIGKILL'); reject(new Error('Uploaded media validation timed out.')); }, 30_000);
     probe.stdout.on('data', chunk => { output += chunk.toString(); });
@@ -378,7 +404,7 @@ function validateUploadedVideo(filepath) {
       clearTimeout(timer);
       if (code !== 0) return reject(new Error('The uploaded file is not a valid supported video.'));
       const formats = new Set(output.trim().split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
-      const allowed = ['mov','mp4','m4a','3gp','3g2','mj2','matroska','webm','avi','mpeg'];
+      const allowed = ['mov', 'mp4', 'matroska', 'webm', 'avi', 'mpeg'];
       if (!allowed.some(format => formats.has(format))) return reject(new Error('The uploaded file format is not allowed.'));
       resolve(true);
     });
@@ -1169,6 +1195,7 @@ app.post('/api/projects/:projectId/entity-events', async (req, res) => {
     if (!database.connected) return res.status(503).json({ error: 'Entity event storage is unavailable because the database is not connected.', database });
     await recordEntityEvent({
       projectId: req.params.projectId,
+      ownerUserId: req.authUserId,
       sceneId: req.body?.sceneId,
       shotId: req.body?.shotId,
       entityId: req.body?.entityId,
