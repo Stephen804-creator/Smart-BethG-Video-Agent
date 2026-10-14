@@ -243,7 +243,10 @@ async function getOwnedProject(projectId, userId) {
   if (!projectId || !userId || userId === 'admin') return null;
   if (process.env.DATABASE_URL) {
     const canonical = await getFilmProjectFromDatabase(projectId, userId);
-    if (canonical) filmStore.replaceProjects([canonical]);
+    // A database miss is authoritative. Never revive a deleted or foreign-owned
+    // project from a stale in-memory cache.
+    if (!canonical) return null;
+    filmStore.replaceProjects([canonical]);
   }
   const project = filmStore.getProject(projectId);
   return project && project.ownerUserId === userId ? project : null;
@@ -273,6 +276,10 @@ app.use('/api/film', requireUserIdentity);
 app.use('/api/projects', requireUserIdentity);
 app.use('/api/jobs', requireUserIdentity);
 app.use('/api/generations', requireUserIdentity);
+
+// Guard every project-scoped route before its handler can read or mutate the
+// in-memory store, enqueue work, or parse multipart uploads.
+app.use('/api/film/projects/:projectId', requireProjectAccess);
 app.use('/api/production', requireUserIdentity);
 
 app.use('/api/film/projects/:projectId', requireProjectAccess);
@@ -1009,34 +1016,6 @@ app.post('/api/film/projects/:projectId/export', async (req, res) => {
     res.status(202).json({ status: 'Queued', job });
   } catch (error) {
     res.status(error?.statusCode || 400).json({ error: error?.message || 'Could not queue film export.' });
-  }
-});
-
-app.post('/api/film/projects/:projectId/shots/:shotId/render', async (req, res) => {
-  try {
-    const project = filmStore.getProject(req.params.projectId);
-    if (!project) return res.status(404).json({ error: 'Film project not found.' });
-    const shot = (project.shots || []).find(item => item.id === req.params.shotId);
-    if (!shot) return res.status(404).json({ error: 'Shot not found.' });
-
-    const selectedTake = (project.takes || []).find(take => take.id === shot.selectedTakeId);
-    const requestedAssetId = req.body?.assetId || selectedTake?.assetId;
-    const asset = requestedAssetId ? (project.assets || []).find(item => item.id === requestedAssetId) : null;
-    if (!asset?.filename) return res.status(400).json({ error: 'Select a take with an imported media asset before rendering.' });
-
-    const inputPath = resolveMediaPath(asset.uri || asset.filename, { root, outputDir, assetDir });
-    if (!inputPath || !fs.existsSync(inputPath)) return res.status(404).json({ error: 'Source media file is unavailable.' });
-
-    const rendered = await renderShot({ inputPath, outputDir, edit: shot.edit, effects: shot.effects, audioMix: shot.audioMix });
-    const outputAsset = filmStore.addAsset(req.params.projectId, {
-      name: 'Rendered Shot ' + shot.number, filename: rendered.filename, sourceType: 'rendered', uri: rendered.output,
-      sceneId: shot.sceneId, shotId: shot.id, mimeType: 'video/mp4',
-      notes: JSON.stringify({ sourceAssetId: asset.id, applied: rendered.applied, limitations: rendered.limitations })
-    });
-    const evaluation = await evaluateVideoFile(rendered.outputPath, { frameOutputRoot: path.join(dataDir, 'evaluation-frames') });
-    res.status(201).json({ asset: outputAsset, render: rendered, evaluation });
-  } catch (error) {
-    res.status(400).json({ error: error?.message || 'Could not render shot.' });
   }
 });
 
