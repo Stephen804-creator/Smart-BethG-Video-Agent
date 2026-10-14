@@ -40,9 +40,19 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # TEMPORARY: generate the lockfile once on the hosted runner and export it.
+      # Remove this step after committing the generated package-lock.json.
+      - name: Generate package lock artifact (temporary)
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Upload generated package lock (temporary)
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          retention-days: 1
       - name: Install locked dependencies
         run: npm ci
       - name: Run unit and render tests
