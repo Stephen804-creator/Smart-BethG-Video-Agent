@@ -62,10 +62,14 @@ test('API requires authentication for protected routes', { skip: !enabled }, asy
   assert.equal(headers.headers['permissions-policy'], 'camera=\(\), microphone=\(\), geolocation=\(\)');
 });
 
-test('bearer tokens never acquire a user identity for owner-scoped resources', { skip: !enabled }, async () => {
+test('bearer tokens never acquire a user identity for owner-scoped resources or private media', { skip: !enabled }, async () => {
   const response = await api.get('/api/generations').set('Authorization', 'Bearer ci-bearer-token');
   assert.equal(response.status, 401);
   assert.match(response.body.error, /user session/i);
+
+  const output = await api.get('/output/private-test.mp4').set('Authorization', 'Bearer ci-bearer-token');
+  assert.equal(output.status, 401);
+  assert.match(output.body.error, /user session/i);
 });
 
 test('registration does not reveal whether an email already exists', { skip: !enabled }, async () => {
@@ -93,6 +97,25 @@ test('rejected uploads are cleaned up and unsupported media is refused', { skip:
     .attach('file', Buffer.from('not a video'), 'malware.txt');
   assert.equal(response.status, 400);
   const after = await (await import('node:fs/promises')).readdir(uploadDir).catch(() => []);
+  assert.equal(after.length, before.length);
+});
+
+test('spoofed video uploads are rejected by content probing and cleaned up', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = `upload-spoof-${suffix}@example.test`;
+  const password = 'correct-horse-battery-spoof';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const project = await agent.post('/api/film/projects').send({ title: 'Upload Content Validation' });
+  assert.equal(project.status, 201);
+  const fs = await import('node:fs/promises');
+  const uploadDir = new URL('../data/upload-tmp/', import.meta.url).pathname;
+  const before = await fs.readdir(uploadDir).catch(() => []);
+  const response = await agent.post('/api/film/projects/' + project.body.project.id + '/assets/upload')
+    .attach('file', Buffer.from('not a video container'), { filename: 'fake.mp4', contentType: 'video/mp4' });
+  assert.equal(response.status, 400);
+  const after = await fs.readdir(uploadDir).catch(() => []);
   assert.equal(after.length, before.length);
 });
 
@@ -262,8 +285,37 @@ test('project entity events and generation reads are owner-scoped', { skip: !ena
   const created = await userA.post('/api/film/projects').send({ title: 'Entity Isolation' });
   assert.equal(created.status, 201);
   const projectId = created.body.project.id;
-  assert.equal((await userA.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'blue' } })).status, 200);
-  assert.equal((await userB.post('/api/projects/' + projectId + '/entity-events').send({ entityId: 'entity-1', eventType: 'changed', changes: { wardrobe: 'red' } })).status, 404);
+  const entityId = 'entity-' + suffix;
+  const entities = await userA.post('/api/projects/' + projectId + '/entities')
+    .send({ entities: [{ id: entityId, type: 'character', name: 'Private Character', state: { wardrobe: 'blue' } }] });
+  assert.equal(entities.status, 200, JSON.stringify(entities.body));
+  const ownEvent = await userA.post('/api/projects/' + projectId + '/entity-events')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'blue' } });
+  assert.equal(ownEvent.status, 200, JSON.stringify(ownEvent.body));
+  const foreignEvent = await userB.post('/api/projects/' + projectId + '/entity-events')
+    .send({ entityId, eventType: 'changed', changes: { wardrobe: 'red' } });
+  assert.equal(foreignEvent.status, 404);
+});
+
+test('database ownership removal cannot be bypassed by a cached project', { skip: !enabled }, async () => {
+  const suffix = Date.now();
+  const agent = request.agent('http://127.0.0.1:8787');
+  const email = 'ownerless-project-' + suffix + '@example.test';
+  const password = 'correct-horse-battery-ownerless';
+  await agent.post('/api/auth/register').send({ email, password });
+  assert.equal((await agent.post('/api/auth/login').send({ email, password })).status, 200);
+  const created = await agent.post('/api/film/projects').send({ title: 'Ownerless Cache Guard' });
+  assert.equal(created.status, 201);
+  const projectId = created.body.project.id;
+  const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: true } });
+  try {
+    await db.query('UPDATE media_projects SET owner_user_id=NULL WHERE id=$1', [projectId]);
+    const response = await agent.get('/api/film/projects/' + projectId);
+    assert.equal(response.status, 404);
+  } finally {
+    await db.query('DELETE FROM media_projects WHERE id=$1', [projectId]).catch(() => {});
+    await db.end();
+  }
 });
 
 test('legacy null-owner generations are never readable through owner-scoped queries', { skip: !enabled }, async () => {
